@@ -2,6 +2,11 @@ use glfw::Context;
 
 fn main() {
     let mut glfw = glfw::init(glfw::fail_on_errors).unwrap();
+    glfw.window_hint(glfw::WindowHint::ContextVersionMajor(3));
+    glfw.window_hint(glfw::WindowHint::ContextVersionMinor(3));
+    glfw.window_hint(glfw::WindowHint::OpenGlProfile(
+        glfw::OpenGlProfileHint::Core,
+    ));
     let (mut window, _) = glfw
         .create_window(1280, 720, "Budhunt", glfw::WindowMode::Windowed)
         .expect("Failed to create window");

@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gl = "0.14.0"
-glfw = "0.61.0"
+ace = { version = "0.1.0", path = "../ace" }
+gl = "0.14"
+glfw = "0.61"
+image = { version = "0.25", default-features = false, features = ["png"] }

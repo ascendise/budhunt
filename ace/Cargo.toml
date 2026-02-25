@@ -1,0 +1,12 @@
+[package]
+name = "ace"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gl = "0.14"
+gltf = "1.4"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+test-case = "3.3"

@@ -270,9 +270,7 @@ fn gl_matrix_uniform(shader: Shader, matrix: &math::Matrix4, key: &str) {
 
 fn calculate_model_matrix(transform: &Transform) -> math::Matrix4 {
     let translation = math::Matrix4::translation(&transform.position);
-    let rotation = &transform.rotation;
-    let rotation =
-        math::rotation_x(rotation.x) * math::rotation_y(rotation.y) * math::rotation_z(rotation.z);
+    let rotation = math::rotation(&transform.rotation);
     translation * rotation
 }
 

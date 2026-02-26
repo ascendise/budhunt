@@ -48,9 +48,15 @@ pub fn radians(degree: f32) -> f32 {
     PI / 180.0 * degree
 }
 
-//TODO: Move into single rotation(Vec3) -> Matrix4
+pub fn rotation(radians: &Vec3) -> Matrix4 {
+    let mut rotation = Matrix4::new(1.0);
+    rotation = rotation * rotation_x(radians.x);
+    rotation = rotation * rotation_y(radians.y);
+    rotation = rotation * rotation_z(radians.z);
+    rotation
+}
 
-pub fn rotation_x(radians: f32) -> Matrix4 {
+fn rotation_x(radians: f32) -> Matrix4 {
     [
         [1.0, 0.0, 0.0, 0.0],
         [0.0, radians.cos(), radians.sin(), 0.0],
@@ -60,7 +66,7 @@ pub fn rotation_x(radians: f32) -> Matrix4 {
     .into()
 }
 
-pub fn rotation_y(radians: f32) -> Matrix4 {
+fn rotation_y(radians: f32) -> Matrix4 {
     [
         [radians.cos(), 0.0, -radians.sin(), 0.0],
         [0.0, 1.0, 0.0, 0.0],
@@ -70,7 +76,7 @@ pub fn rotation_y(radians: f32) -> Matrix4 {
     .into()
 }
 
-pub fn rotation_z(radians: f32) -> Matrix4 {
+fn rotation_z(radians: f32) -> Matrix4 {
     [
         [radians.cos(), radians.sin(), 0.0, 0.0],
         [-radians.sin(), radians.cos(), 0.0, 0.0],

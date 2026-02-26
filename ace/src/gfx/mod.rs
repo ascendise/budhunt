@@ -16,7 +16,7 @@ pub struct Mesh {
 pub struct Vertex {
     pub position: math::Vec3,
     pub normal: math::Vec3,
-    pub texture: math::Vec2, //TODO: Vec2?
+    pub texture: math::Vec2,
 }
 
 /// Vertex index

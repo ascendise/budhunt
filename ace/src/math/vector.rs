@@ -1,5 +1,9 @@
 use std::ops::{Add, Div, Mul, Sub};
 
+//TODO: Macros for easier creation of vectors
+// E.g. vecn[1.0, 2.0, 3.0] => Vec3
+// vec2[1.0] => Vec2 { 1.0, 1.0 }
+
 #[derive(Default, Debug, PartialEq, Clone)]
 pub struct Vec2 {
     pub x: f32,

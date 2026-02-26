@@ -48,6 +48,8 @@ pub fn radians(degree: f32) -> f32 {
     PI / 180.0 * degree
 }
 
+//TODO: Move into single rotation(Vec3) -> Matrix4
+
 pub fn rotation_x(radians: f32) -> Matrix4 {
     [
         [1.0, 0.0, 0.0, 0.0],

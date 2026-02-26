@@ -6,7 +6,7 @@ use std::{
     ptr::{null, null_mut},
 };
 
-use crate::gfx::*;
+use crate::{gfx::*, vec4};
 
 pub struct OpenGlRenderer {
     textures: u32,
@@ -306,8 +306,8 @@ fn gl_dirlight_uniform(key: i32, shader: Shader, light: &DirectionalLight, view:
     gl_light_uniform(shader, &light.material, &subkey(key, "light"));
 }
 fn to_view_space(view: &math::Matrix4, vec: &math::Vec3, w: f32) -> math::Vec3 {
-    let res = view * &math::Vec4::new(vec.x, vec.y, vec.z, w);
-    math::Vec3::new(res.x, res.y, res.z)
+    let res = view * &vec4!(vec.x, vec.y, vec.z, w);
+    vec3!(res.x, res.y, res.z)
 }
 
 fn gl_light_uniform(shader: Shader, light: &Material, key: &str) {

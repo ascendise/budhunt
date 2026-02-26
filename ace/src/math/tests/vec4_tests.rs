@@ -1,8 +1,27 @@
-use crate::math::{
-    Vec4,
-    tests::{assert_f32_eq, assert_vec4_eq},
+use crate::{
+    math::{
+        Vec4,
+        tests::{assert_f32_eq, assert_vec4_eq},
+    },
+    vec4,
 };
 use test_case::test_case;
+
+#[test]
+pub fn vec4_should_return_vector_with_all_arguments() {
+    // Act
+    let vec = vec4!(1.0, 2.0, 3.0, 4.0);
+    // Assert
+    assert_vec4_eq(vec, Vec4::new(1.0, 2.0, 3.0, 4.0));
+}
+
+#[test]
+pub fn vec4_should_fill_vector_with_argument() {
+    // Act
+    let vec = vec4!(1.0);
+    // Assert
+    assert_vec4_eq(vec, Vec4::new(1.0, 1.0, 1.0, 1.0));
+}
 
 #[test_case(Vec4::new(1.0, 2.0, 3.0, 4.0), 3.0, Vec4::new(4.0, 5.0, 6.0, 7.0))]
 #[test_case(

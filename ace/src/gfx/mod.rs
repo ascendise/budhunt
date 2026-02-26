@@ -1,4 +1,7 @@
-use crate::math::{self};
+use crate::{
+    math::{self},
+    vec2, vec3,
+};
 
 pub mod opengl;
 
@@ -67,7 +70,7 @@ pub struct Camera {
 impl Camera {
     fn to_view_matrix(&self) -> math::Matrix4 {
         let center = &self.position + &self.direction;
-        let up = math::Vec3::new(0.0, 1.0, 0.0); // We do not allow the player to rotate on the z-axis so up is fixed
+        let up = vec3!(0.0, 1.0, 0.0); // We do not allow the player to rotate on the z-axis so up is fixed
         math::look_at(&self.position, &center, &up)
     }
 }
@@ -180,9 +183,9 @@ fn get_mesh(
         let normal = normals[p];
         let tex_coord = tex_coords[p];
         let vertex = Vertex {
-            position: math::Vec3::new(position[0], position[1], position[2]),
-            normal: math::Vec3::new(normal[0], normal[1], normal[2]),
-            texture: math::Vec2::new(tex_coord[0], tex_coord[1]),
+            position: vec3!(position[0], position[1], position[2]),
+            normal: vec3!(normal[0], normal[1], normal[2]),
+            texture: vec2!(tex_coord[0], tex_coord[1]),
         };
         vertices.push(vertex);
     }

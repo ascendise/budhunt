@@ -1,6 +1,7 @@
 use ace::{
-    gfx::{self, Image, Light, Renderer},
-    math::{self, Vec3, radians},
+    gfx::{self, Image, Renderer},
+    math::{self, radians},
+    vec3,
 };
 use glfw::Context;
 use std::{
@@ -13,22 +14,22 @@ static FRAGMENT_SHADER_SOURCE: &str = include_str!("../shaders/object.fs.glsl");
 
 fn main() {
     let monkeys = [
-        Vec3::new(0.0, 0.0, 0.0),
-        Vec3::new(2.0, 5.0, -15.0),
-        Vec3::new(-1.5, -2.2, -2.5),
-        Vec3::new(-3.8, -2.0, -12.3),
-        Vec3::new(2.4, -0.4, -3.5),
-        Vec3::new(-1.7, 3.0, 7.5),
-        Vec3::new(1.3, -2.0, -2.5),
-        Vec3::new(1.5, 2.0, -2.5),
-        Vec3::new(1.5, 0.2, -1.5),
-        Vec3::new(-1.3, 1.0, -1.5),
+        vec3!(0.0, 0.0, 0.0),
+        vec3!(2.0, 5.0, -15.0),
+        vec3!(-1.5, -2.2, -2.5),
+        vec3!(-3.8, -2.0, -12.3),
+        vec3!(2.4, -0.4, -3.5),
+        vec3!(-1.7, 3.0, 7.5),
+        vec3!(1.3, -2.0, -2.5),
+        vec3!(1.5, 2.0, -2.5),
+        vec3!(1.5, 0.2, -1.5),
+        vec3!(-1.3, 1.0, -1.5),
     ];
     let point_lights = [
-        Vec3::new(0.7, 0.2, 2.0),
-        Vec3::new(2.3, -3.3, -4.0),
-        Vec3::new(-4.0, 2.0, -12.0),
-        Vec3::new(0.0, 0.0, -3.0),
+        vec3!(0.7, 0.2, 2.0),
+        vec3!(2.3, -3.3, -4.0),
+        vec3!(-4.0, 2.0, -12.0),
+        vec3!(0.0, 0.0, -3.0),
     ];
 
     let mut glfw = glfw::init(glfw::fail_on_errors).unwrap();
@@ -50,20 +51,20 @@ fn main() {
         &Image::empty(),
     );
     let point_lights = load_point_lights(&mut renderer, &light_mesh, &point_lights, shader_program);
-    let sun_color = Vec3::new(1.0, 1.0, 1.0);
+    let sun_color = vec3!(1.0, 1.0, 1.0);
     let dir_light = gfx::DirectionalLight {
         shader: shader_program,
-        direction: Vec3::new(-0.2, -1.0, -0.3),
+        direction: vec3!(-0.2, -1.0, -0.3),
         material: gfx::Material {
-            ambient: &math::Vec3::new(0.2, 0.2, 0.2) * &sun_color,
-            diffuse: &math::Vec3::new(0.5, 0.5, 0.5) * &sun_color,
-            specular: &math::Vec3::new(1.0, 1.0, 1.0) * &sun_color,
+            ambient: &vec3!(0.2, 0.2, 0.2) * &sun_color,
+            diffuse: &vec3!(0.5, 0.5, 0.5) * &sun_color,
+            specular: &vec3!(1.0, 1.0, 1.0) * &sun_color,
         },
     };
     let dir_light = gfx::Light::Directional(dir_light);
     print_opengl_errors();
     let mut last_frame = 0f32;
-    let mut eye = Vec3::new(0.0, 0.0, 3.0);
+    let mut eye = vec3!(0.0, 0.0, 3.0);
     while !window.glfw.should_close() {
         handle_key_events(&mut window, &renderer);
         let fov = radians(*window.fov.lock().unwrap());
@@ -107,9 +108,9 @@ fn setup_window(glfw: &mut glfw::Glfw) -> Window {
     });
     window.set_cursor_mode(glfw::CursorMode::Disabled);
     let (width, height) = window.get_size();
-    let cursor_position = Arc::new(Mutex::new(Vec3::new(width as f32, height as f32, 0.0)));
+    let cursor_position = Arc::new(Mutex::new(vec3!(width as f32, height as f32, 0.0)));
     let cursor_position_2 = cursor_position.clone();
-    let cursor_offset = Arc::new(Mutex::new(Vec3::default()));
+    let cursor_offset = Arc::new(Mutex::new(math::Vec3::default()));
     let cursor_offset_2 = cursor_offset.clone();
     window.set_cursor_pos_callback(move |_, x, y| {
         let sensitivity = 0.1;
@@ -178,12 +179,12 @@ fn load_point_lights(
     positions: &[math::Vec3],
     shader: u32,
 ) -> Vec<gfx::Light> {
-    let light_color = math::Vec3::new(1.0, 1.0, 1.0);
+    let light_color = vec3!(1.0, 1.0, 1.0);
     let model = renderer.load_mesh(mesh, shader);
     let color = gfx::Material {
-        ambient: &math::Vec3::new(0.5, 0.5, 0.5) * &light_color,
-        diffuse: &math::Vec3::new(0.2, 0.2, 0.2) * &light_color,
-        specular: &math::Vec3::new(1.0, 1.0, 1.0) * &light_color,
+        ambient: &vec3!(0.5, 0.5, 0.5) * &light_color,
+        diffuse: &vec3!(0.2, 0.2, 0.2) * &light_color,
+        specular: &vec3!(1.0, 1.0, 1.0) * &light_color,
     };
     let point_light = gfx::PointLight {
         model,
@@ -207,7 +208,7 @@ pub struct Window {
     glfw: glfw::PWindow,
     width: i32,
     height: i32,
-    cursor_offset: Arc<Mutex<Vec3>>,
+    cursor_offset: Arc<Mutex<math::Vec3>>,
     fov: Arc<Mutex<f32>>,
 }
 
@@ -224,16 +225,16 @@ fn print_opengl_errors() {
 }
 
 /// Returns (movement, camera) direction
-fn get_camera_direction(cursor_offset: &math::Vec3) -> (Vec3, Vec3) {
+fn get_camera_direction(cursor_offset: &math::Vec3) -> (math::Vec3, math::Vec3) {
     let yaw = radians(cursor_offset.x);
     let pitch = radians(cursor_offset.y);
-    let movement = Vec3 {
+    let movement = math::Vec3 {
         x: yaw.cos(),
         y: 0.0,
         z: yaw.sin(),
     }
     .normalize();
-    let direction = Vec3 {
+    let direction = math::Vec3 {
         x: yaw.cos() * pitch.cos(),
         y: pitch.sin(),
         z: yaw.sin() * pitch.cos(),
@@ -248,11 +249,11 @@ fn move_camera(
     direction: &math::Vec3,
     speed: f32,
     delta_time: f32,
-) -> Vec3 {
-    let mut movement = Vec3::default();
+) -> math::Vec3 {
+    let mut movement = math::Vec3::default();
     let speed = delta_time * speed;
     let front = direction * speed;
-    let up = Vec3::new(0.0, 1.0, 0.0);
+    let up = vec3!(0.0, 1.0, 0.0);
     let strafe = front.cross(&up).normalize() * speed;
     if window.get_key(glfw::Key::W) == glfw::Action::Press {
         movement = &movement + &front;
@@ -269,13 +270,13 @@ fn move_camera(
     eye + &movement
 }
 
-fn load_models(positions: &[Vec3; 10], model: &gfx::Model, time: f32) -> Vec<gfx::Model> {
+fn load_models(positions: &[math::Vec3; 10], model: &gfx::Model, time: f32) -> Vec<gfx::Model> {
     let models: Vec<gfx::Model> = positions
         .iter()
         .enumerate()
         .map(|(i, c)| {
             let angle = time * f32::max(i as f32, 0.5);
-            let rotation = Vec3::new(radians(1.0 * angle), radians(1.0 * angle), 0.0);
+            let rotation = vec3!(radians(1.0 * angle), radians(1.0 * angle), 0.0);
             let mut model = model.clone();
             model.transform = gfx::Transform {
                 position: c.clone(),
@@ -289,12 +290,12 @@ fn load_models(positions: &[Vec3; 10], model: &gfx::Model, time: f32) -> Vec<gfx
 
 fn setup_lightning(
     shader_program: u32,
-    point_lights: &[Light],
-    dir_light: &Light,
-    eye: &Vec3,
+    point_lights: &[gfx::Light],
+    dir_light: &gfx::Light,
+    eye: &math::Vec3,
     camera: &gfx::Camera,
-) -> Vec<Light> {
-    let spotlight_color = Vec3::new(1.0, 1.0, 1.0);
+) -> Vec<gfx::Light> {
+    let spotlight_color = vec3!(1.0, 1.0, 1.0);
     let spot_light = gfx::SpotLight {
         shader: shader_program,
         direction: camera.direction.clone(),
@@ -302,9 +303,9 @@ fn setup_lightning(
         inner_cutoff: math::radians(10.0).cos(),
         outer_cutoff: math::radians(15.0).cos(),
         material: gfx::Material {
-            ambient: &math::Vec3::new(0.2, 0.2, 0.2) * &spotlight_color,
-            diffuse: &math::Vec3::new(0.5, 0.5, 0.5) * &spotlight_color,
-            specular: &math::Vec3::new(1.0, 1.0, 1.0) * &spotlight_color,
+            ambient: &vec3!(0.2, 0.2, 0.2) * &spotlight_color,
+            diffuse: &vec3!(0.5, 0.5, 0.5) * &spotlight_color,
+            specular: &vec3!(1.0, 1.0, 1.0) * &spotlight_color,
         },
     };
     let spot_light = gfx::Light::Spot(spot_light);

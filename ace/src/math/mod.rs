@@ -10,6 +10,30 @@ pub use vector::Vec2;
 pub use vector::Vec3;
 pub use vector::Vec4;
 
+#[macro_export]
+macro_rules! vec2 {
+    ($x:expr, $y:expr) => {{ $crate::math::Vec2::new($x, $y) }};
+    ($x:expr) => {
+        $crate::math::Vec2::new($x, $x)
+    };
+}
+
+#[macro_export]
+macro_rules! vec3 {
+    ($x:expr, $y:expr, $z:expr) => {{ $crate::math::Vec3::new($x, $y, $z) }};
+    ($x:expr) => {
+        $crate::math::Vec3::new($x, $x, $x)
+    };
+}
+
+#[macro_export]
+macro_rules! vec4 {
+    ($x:expr, $y:expr, $z:expr, $w:expr) => {{ $crate::math::Vec4::new($x, $y, $z, $w) }};
+    ($x:expr) => {
+        $crate::math::Vec4::new($x, $x, $x, $x)
+    };
+}
+
 pub fn projection(fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Matrix4 {
     let fov_tan = (fov / 2.0).tan();
     [

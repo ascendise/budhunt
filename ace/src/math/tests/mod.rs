@@ -6,7 +6,7 @@ mod vec2_tests;
 mod vec3_tests;
 mod vec4_tests;
 
-pub fn assert_matrix4_eq(expected: Matrix4, actual: Matrix4) {
+pub fn assert_matrix4_eq(expected: &Matrix4, actual: &Matrix4) {
     let mut not_equal = false;
     for i in 0..=3 {
         for y in 0..=3 {
@@ -21,7 +21,7 @@ pub fn assert_matrix4_eq(expected: Matrix4, actual: Matrix4) {
     }
 }
 
-pub fn assert_vec4_eq(expected: Vec4, actual: Vec4) {
+pub fn assert_vec4_eq(expected: &Vec4, actual: &Vec4) {
     if !(float_is_near(expected.x, actual.x, f32::EPSILON)
         && float_is_near(expected.y, actual.y, f32::EPSILON)
         && float_is_near(expected.z, actual.z, f32::EPSILON)
@@ -30,7 +30,7 @@ pub fn assert_vec4_eq(expected: Vec4, actual: Vec4) {
         assert_eq!(expected, actual, "Vec4 do not match!");
     }
 }
-pub fn assert_vec3_eq(expected: Vec3, actual: Vec3) {
+pub fn assert_vec3_eq(expected: &Vec3, actual: &Vec3) {
     if !(float_is_near(expected.x, actual.x, f32::EPSILON)
         && float_is_near(expected.y, actual.y, f32::EPSILON)
         && float_is_near(expected.z, actual.z, f32::EPSILON))
@@ -54,7 +54,7 @@ fn float_is_near(expected: f32, actual: f32, epsilon: f32) -> bool {
     let actual_abs = actual.abs();
     let diff = (expected_abs - actual_abs).abs();
     if expected == 0.0 || actual == 0.0 || expected_abs + actual_abs < f32::MIN_POSITIVE {
-        diff < epsilon * f32::MIN_POSITIVE
+        diff < epsilon
     } else {
         diff / f32::min(expected_abs + actual_abs, f32::MAX) < epsilon
     }

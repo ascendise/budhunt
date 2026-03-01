@@ -1,6 +1,6 @@
 mod matrix;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 mod vector;
 
 use std::f32::consts::PI;

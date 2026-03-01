@@ -1,9 +1,80 @@
-use crate::{
-    math::{self},
-    vec2, vec3,
-};
+use std::sync::Mutex;
 
+use crate::*;
 pub mod opengl;
+
+#[cfg(test)]
+mod tests;
+
+pub struct RenderSystem {
+    renderer: Box<dyn Renderer>,
+    projection: Mutex<gfx::Projection>,
+}
+impl RenderSystem {
+    pub const MIN_FOV: f32 = 1.0;
+    pub const MAX_FOV: f32 = 120.0;
+
+    pub fn new(renderer: Box<dyn Renderer>, projection: gfx::Projection) -> Self {
+        Self {
+            renderer,
+            projection: Mutex::new(projection),
+        }
+    }
+
+    fn find_camera(entities: &mut Entities) -> Camera {
+        let player = entities.get_entity(Entities::PLAYER_IDX);
+        let camera = player
+            .iter()
+            .find(|c| matches!(c, Component::Position(_)))
+            .expect("No camera position found");
+        let camera = component!(camera, Component::Position).clone();
+        gfx::Camera {
+            position: camera.position,
+            direction: camera.direction,
+        }
+    }
+
+    fn handle_inputs(inputs: &[input::Input], projection: &mut gfx::Projection) {
+        for input in inputs {
+            if let input::Input::Scroll(scroll) = input {
+                let fov = projection.fov + -scroll;
+                projection.fov = fov.clamp(Self::MIN_FOV, Self::MAX_FOV);
+            }
+        }
+    }
+}
+impl System for RenderSystem {
+    fn run(&self, entities: &mut Entities, inputs: &[input::Input]) {
+        let mut projection = self.projection.lock().unwrap();
+        Self::handle_inputs(inputs, &mut projection);
+        let camera = Self::find_camera(entities);
+        let models = entities.get_bucket(Component::MODEL);
+        let positions = entities.get_bucket(Component::POSITION);
+        let lights = entities.get_bucket(Component::LIGHT);
+        let mut render_models = vec![];
+        let mut render_lights = vec![];
+        for (m, model) in models.iter().enumerate() {
+            if let Some(Component::Model(model)) = &model {
+                let mut model = model.clone();
+                let position = &positions[m];
+                let position =
+                    component!(position, Some(Component::Position) or &Default::default());
+                model.transform.position = &model.transform.position + &position.position;
+                render_models.push(model);
+            }
+            if let Some(Component::Light(light)) = &lights[m] {
+                let mut light = light.clone();
+                let position = &positions[m];
+                let position =
+                    component!(position, Some(Component::Position) or &Default::default());
+                light.transform(position);
+                render_lights.push(light);
+            }
+        }
+        self.renderer
+            .render(&projection, &camera, &render_models, &render_lights);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Mesh {
@@ -46,11 +117,11 @@ pub trait Renderer {
     fn render(&self, projection: &Projection, camera: &Camera, model: &[Model], lights: &[Light]);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Projection {
     pub width: f32,
     pub height: f32,
-    /// radians
+    /// degrees
     pub fov: f32,
     pub near: f32,
     pub far: f32,
@@ -58,11 +129,11 @@ pub struct Projection {
 impl Projection {
     fn to_projection_matrix(&self) -> math::Matrix4 {
         let aspect_ratio = self.width / self.height;
-        math::projection(self.fov, aspect_ratio, self.near, self.far)
+        math::projection(math::radians(self.fov), aspect_ratio, self.near, self.far)
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct Camera {
     pub position: math::Vec3,
     pub direction: math::Vec3,
@@ -77,7 +148,7 @@ impl Camera {
 
 pub type VertexArray = u32;
 pub type Shader = u32;
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Model {
     pub vao: VertexArray,
     pub shader: Shader,
@@ -88,7 +159,7 @@ pub struct Model {
 }
 
 pub type Tex = i32;
-#[derive(Debug, Clone)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Texture {
     pub diffuse: Tex,
     pub specular: Tex,
@@ -96,35 +167,46 @@ pub struct Texture {
     pub shininess: f32,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(PartialEq, Debug, Clone, Default)]
 pub struct Transform {
     pub position: math::Vec3,
     /// radians
     pub rotation: math::Vec3,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Light {
     Directional(DirectionalLight),
     Point(PointLight),
     Spot(SpotLight),
 }
+impl Light {
+    pub fn transform(&mut self, position: &Position) {
+        let (light_position, light_direction) = match self {
+            Light::Point(l) => (&mut l.model.transform.position, &mut Default::default()),
+            Light::Spot(l) => (&mut l.position, &mut l.direction),
+            _ => return,
+        };
+        *light_position = &light_position.clone() + &position.position;
+        *light_direction = &light_direction.clone() + &position.direction;
+    }
+}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Material {
     pub ambient: math::Vec3,
     pub diffuse: math::Vec3,
     pub specular: math::Vec3,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct DirectionalLight {
     pub shader: Shader,
     pub direction: math::Vec3,
     pub material: Material,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct PointLight {
     pub model: Model,
     pub color: Material,
@@ -133,7 +215,7 @@ pub struct PointLight {
     pub quadratic: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SpotLight {
     pub shader: Shader,
     pub position: math::Vec3,

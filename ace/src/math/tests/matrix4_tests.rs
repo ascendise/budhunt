@@ -17,7 +17,7 @@ pub fn new_should_return_identity_matrix() {
         [0.0, 0.0, 0.0, 1.0],
     ]
     .into();
-    assert_matrix4_eq(expected, result);
+    assert_matrix4_eq(&expected, &result);
 }
 
 #[test]
@@ -40,7 +40,7 @@ pub fn transpose_should_flip_matrix_ordering() {
         [1.4, 2.4, 3.4, 4.4],
     ]
     .into();
-    assert_matrix4_eq(expected, transposed);
+    assert_matrix4_eq(&expected, &transposed);
 }
 
 #[test]
@@ -51,7 +51,7 @@ pub fn inverse_should_return_inverted_matrix() {
     let inverse = matrix.inverse();
     // Assert
     let expected = Matrix4::new(1.0) * 0.5;
-    assert_matrix4_eq(expected, inverse);
+    assert_matrix4_eq(&expected, &inverse);
 }
 
 #[test]
@@ -75,7 +75,7 @@ pub fn inverse_should_return_inverted_matrix_2() {
     ]
     .into();
     let expected = expected * -(1.0 / 16.0);
-    assert_matrix4_eq(expected, inverse);
+    assert_matrix4_eq(&expected, &inverse);
 }
 
 #[test]
@@ -99,7 +99,7 @@ pub fn inverse_should_return_inverted_matrix_3() {
     ]
     .into();
     let expected = expected * (1.0 / 17.0);
-    assert_matrix4_eq(expected, inverse);
+    assert_matrix4_eq(&expected, &inverse);
 }
 
 #[test]
@@ -129,7 +129,7 @@ pub fn add_should_return_matrix_sum() {
         [12.0, 6.0, 8.0, 10.0],
     ]
     .into();
-    assert_matrix4_eq(expected, result);
+    assert_matrix4_eq(&expected, &result);
 }
 
 #[test]
@@ -159,7 +159,7 @@ pub fn sub_should_return_subtracted_matrix() {
         [-4.0, -4.0, -4.0, -4.0],
     ]
     .into();
-    assert_matrix4_eq(expected, result);
+    assert_matrix4_eq(&expected, &result);
 }
 
 #[test]
@@ -182,7 +182,7 @@ pub fn mul_scalar_should_return_matrix_product() {
         [2.0, 0.5, 1.0, 1.5],
     ]
     .into();
-    assert_matrix4_eq(expected, result);
+    assert_matrix4_eq(&expected, &result);
 }
 
 #[test]
@@ -212,7 +212,7 @@ pub fn mul_matrix_should_return_matrix_product() {
         [64.0, 62.0, 64.0, 70.0],
     ]
     .into();
-    assert_matrix4_eq(expected, result);
+    assert_matrix4_eq(&expected, &result);
 }
 
 #[test]
@@ -233,7 +233,7 @@ pub fn mul_matrix_should_return_matrix_product2() {
         [0.0, 0.0, 0.0, -1.0],
     ]
     .into();
-    assert_matrix4_eq(expected, result);
+    assert_matrix4_eq(&expected, &result);
 }
 
 #[test]
@@ -251,5 +251,5 @@ pub fn mul_vec_should_return_matrix_product() {
     let result = left * right;
     // Assert
     let expected = Vec4::new(30.0, 24.0, 22.0, 24.0);
-    assert_vec4_eq(expected, result);
+    assert_vec4_eq(&expected, &result);
 }

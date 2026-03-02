@@ -1,0 +1,48 @@
+name: test-pipeline
+on:
+  pull_request:
+    branches: [main, release/*] 
+
+jobs:
+  cargo-test:
+    env:
+      RUNNER_TOOL_CACHE: $HOME/.cargo/
+    runs-on: ubuntu-latest
+    container: 
+      image: docker.ascendise.ch/ascendise/cargo-runner:1.2.0-rust1.93
+      credentials:
+        username: ${{ secrets.DOCKER_USER }}
+        password: ${{ secrets.DOCKER_PASS }}
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v3
+      - name: Install dependencies
+        run: apt-get update && apt-get -y install libwayland-dev libxkbcommon-dev xorg-dev libgl-dev libx11-dev libxkbfile-dev libglx-dev libinput-dev libegl-dev
+      - name: Run cargo test
+        run: cargo test 
+  cargo-clippy:
+    runs-on: ubuntu-latest
+    container: 
+      image: docker.ascendise.ch/ascendise/cargo-runner:1.2.0-rust1.93
+      credentials:
+        username: ${{ secrets.DOCKER_USER }}
+        password: ${{ secrets.DOCKER_PASS }}
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v3
+      - name: Install dependencies 
+        run: apt-get update && apt-get -y install libwayland-dev libxkbcommon-dev xorg-dev libgl-dev libx11-dev libxkbfile-dev libglx-dev libinput-dev libegl-dev
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+  cargo-fmt:
+    runs-on: ubuntu-latest
+    container: 
+      image: docker.ascendise.ch/ascendise/cargo-runner:1.2.0-rust1.93
+      credentials:
+        username: ${{ secrets.DOCKER_USER }}
+        password: ${{ secrets.DOCKER_PASS }}
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v3
+      - name: Run cargo fmt
+        run: cargo fmt --all --check

@@ -1,6 +1,8 @@
 mod matrix;
+#[cfg(feature = "test_utils")]
+pub mod test_utils;
 #[cfg(test)]
-pub(crate) mod tests;
+mod tests;
 mod vector;
 
 use std::f32::consts::PI;

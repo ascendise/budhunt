@@ -2,11 +2,11 @@ use std::ops::{Index, IndexMut};
 
 use indexmap::IndexMap;
 
-use crate::input::InputListener;
-
 pub mod gfx;
-pub mod input;
+pub mod glfw_input;
 pub mod math;
+pub mod scripts;
+pub use scripts::Script;
 
 #[cfg(test)]
 mod tests;
@@ -37,7 +37,7 @@ pub struct World {
     entities: Entities,
     systems: Vec<Box<dyn System>>,
     clock: Box<dyn Clock>,
-    input_listener: Box<dyn input::InputListener>,
+    input_listener: Box<dyn InputListener>,
 }
 impl World {
     pub fn init(
@@ -68,6 +68,7 @@ pub struct Entities<T: TypeId = Component, const E: usize = 255> {
     components: IndexMap<u32, [Option<T>; E]>,
     empty_bucket: [Option<T>; E],
     entities: usize,
+    register: [u32; E],
 }
 impl Entities {
     pub const PLAYER_IDX: usize = 0;
@@ -83,6 +84,7 @@ impl Entities {
             components,
             empty_bucket,
             entities: 0,
+            register: [0u32; E],
         }
     }
 }
@@ -94,8 +96,10 @@ impl<T: TypeId, const E: usize> Entities<T, E> {
     pub fn add_entity(&mut self, entity: Vec<T>) -> usize {
         let idx = self.entities;
         self.entities = idx + 1;
+        let mut components = 0u32;
         for component in entity {
             let type_id = component.get_type();
+            components |= type_id;
             if !self.components.contains_key(&type_id) {
                 let empty_bucket = [0; E].map(|_| None);
                 self.components.insert(type_id, empty_bucket);
@@ -103,6 +107,7 @@ impl<T: TypeId, const E: usize> Entities<T, E> {
             let bucket = self.components.get_mut(&type_id).unwrap();
             bucket[idx] = Some(component);
         }
+        self.register[idx] = components;
         idx
     }
 
@@ -112,6 +117,10 @@ impl<T: TypeId, const E: usize> Entities<T, E> {
 
     pub fn update_entity(&mut self, idx: usize, value: T) {
         let type_id = value.get_type();
+        if self.register[idx] & value.get_type() == 0 {
+            let empty_bucket = [0; E].map(|_| None);
+            self.components.insert(value.get_type(), empty_bucket);
+        }
         self[type_id][idx] = Some(value)
     }
 
@@ -127,6 +136,19 @@ impl<T: TypeId, const E: usize> Entities<T, E> {
             .get(&component_type)
             .unwrap_or(&self.empty_bucket);
         &bucket[0..self.entities]
+    }
+
+    /// Takes a set of bitflags OR'd together and returns filtered (only specified components) entities
+    fn get_entities(&self, components: u32) -> Vec<(usize, Vec<&T>)> {
+        let mut entities = vec![];
+        for e in 0..self.entities {
+            let entity = self.register[e];
+            if entity & components >= components {
+                let entity = self.get_entity(e);
+                entities.push((e, entity));
+            }
+        }
+        entities
     }
 }
 impl<T: TypeId, const E: usize> IndexMut<u32> for Entities<T, E> {
@@ -147,22 +169,17 @@ impl<T: TypeId, const E: usize> Index<u32> for Entities<T, E> {
     }
 }
 
-bitflags::bitflags! {
-pub struct Components: u32 {
-    const POSITION = 0b100;
-    const MODEL = 0b10;
-    const LIGHT = 0b1;
-}}
-
 pub enum Component {
     Position(Position),
     Model(gfx::Model),
     Light(gfx::Light),
+    Scripts(Vec<Box<dyn scripts::Script>>),
 }
 impl Component {
-    pub const POSITION: u32 = Components::POSITION.0.0;
-    pub const MODEL: u32 = Components::MODEL.0.0;
-    pub const LIGHT: u32 = Components::LIGHT.0.0;
+    pub const POSITION: u32 = 0b1;
+    pub const MODEL: u32 = 0b10;
+    pub const LIGHT: u32 = 0b100;
+    pub const SCRIPTS: u32 = 0b1000;
 }
 impl TypeId for Component {
     fn get_type(&self) -> u32 {
@@ -170,6 +187,7 @@ impl TypeId for Component {
             Component::Position(_) => Component::POSITION,
             Component::Model(_) => Component::MODEL,
             Component::Light(_) => Component::LIGHT,
+            Component::Scripts(_) => Component::SCRIPTS,
         }
     }
 }
@@ -179,7 +197,7 @@ pub trait TypeId {
 }
 
 pub trait System {
-    fn run(&self, entities: &mut Entities, inputs: &[input::Input]);
+    fn run(&self, entities: &mut Entities, inputs: &[Input]);
 }
 
 pub trait Clock {
@@ -193,4 +211,21 @@ pub trait Clock {
 pub struct Position {
     pub position: math::Vec3,
     pub direction: math::Vec3,
+}
+
+pub trait InputListener {
+    fn get_inputs(&self) -> Vec<Input>;
+    fn get_cursor_offset(&self) -> math::Vec2;
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum Input {
+    Forward,
+    Backwards,
+    Left,
+    Right,
+    /// Cursor offset
+    MoveCursor(math::Vec2),
+    /// y offset
+    Scroll(f32),
 }

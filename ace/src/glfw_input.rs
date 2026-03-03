@@ -1,11 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::*;
-use crate::{
-    Clock,
-    input::{Input, InputListener},
-    math,
-};
+use crate::{Clock, math};
 
 pub struct GlfwInputListener {
     window: Arc<Mutex<glfw::PWindow>>,

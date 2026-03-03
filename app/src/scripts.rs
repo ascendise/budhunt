@@ -1,38 +1,34 @@
-use crate::*;
-
-pub mod glfw;
+use ace::{component, math, vec2, vec3};
 #[cfg(test)]
 mod tests;
 
-pub struct InputSystem {
-    clock: Box<dyn Clock>,
+pub struct MovementScript {
+    clock: Box<dyn ace::Clock>,
 }
-impl System for InputSystem {
-    fn run(&self, entities: &mut Entities, inputs: &[Input]) {
-        let player = entities.get_entity(Entities::PLAYER_IDX);
+impl ace::Script for MovementScript {
+    fn run(&self, player: &[&ace::Component], inputs: &[ace::Input]) -> Vec<ace::Component> {
         let camera = player
             .iter()
-            .find(|c| matches!(c, Component::Position(_)))
+            .find(|c| matches!(c, ace::Component::Position(_)))
             .expect("No camera position found");
-        let mut camera = component!(camera, Component::Position).clone();
+        let mut camera = component!(camera, ace::Component::Position).clone();
         let cursor_offset = inputs
             .iter()
-            .find(|i| matches!(i, Input::MoveCursor(_)))
-            .map(|i| component!(i, Input::MoveCursor).clone())
+            .find(|i| matches!(i, ace::Input::MoveCursor(_)))
+            .map(|i| component!(i, ace::Input::MoveCursor).clone())
             .unwrap_or(vec2!(0.0));
         let move_dir = self.turn_camera(&mut camera, &cursor_offset);
         self.move_camera(&mut camera, inputs, &move_dir);
-        entities.update_entity(0, Component::Position(camera));
+        vec![ace::Component::Position(camera)]
     }
 }
-
-impl InputSystem {
-    pub fn new(clock: Box<dyn Clock>) -> Self {
+impl MovementScript {
+    pub fn new(clock: Box<dyn ace::Clock>) -> Self {
         Self { clock }
     }
 
     /// Moves camera on xyz-axis and returns movement direction (y axis rotation)
-    fn turn_camera(&self, camera: &mut Position, offset: &math::Vec2) -> math::Vec3 {
+    fn turn_camera(&self, camera: &mut ace::Position, offset: &math::Vec2) -> math::Vec3 {
         let yaw = math::radians(offset.x);
         let pitch = math::radians(offset.y);
         let move_dir = math::Vec3 {
@@ -51,43 +47,31 @@ impl InputSystem {
         move_dir
     }
 
-    fn move_camera(&self, camera: &mut Position, inputs: &[Input], move_direction: &math::Vec3) {
+    fn move_camera(
+        &self,
+        camera: &mut ace::Position,
+        inputs: &[ace::Input],
+        move_direction: &math::Vec3,
+    ) {
         let mut movement = math::Vec3::default();
         let speed = 10.0;
         let speed = self.clock.time_delta() * speed;
         let front = move_direction.normalize();
         let up = vec3!(0.0, 1.0, 0.0);
         let strafe = front.cross(&up).normalize();
-        if inputs.contains(&Input::Forward) {
+        if inputs.contains(&ace::Input::Forward) {
             movement = &movement + &front;
         }
-        if inputs.contains(&Input::Backwards) {
+        if inputs.contains(&ace::Input::Backwards) {
             movement = &movement - &front;
         }
-        if inputs.contains(&Input::Right) {
+        if inputs.contains(&ace::Input::Right) {
             movement = &(&movement / 2.0) + &strafe;
         }
-        if inputs.contains(&Input::Left) {
+        if inputs.contains(&ace::Input::Left) {
             movement = &(&movement / 2.0) - &strafe;
         }
         let movement = movement * speed;
         camera.position = &camera.position + &movement;
     }
-}
-
-pub trait InputListener {
-    fn get_inputs(&self) -> Vec<Input>;
-    fn get_cursor_offset(&self) -> math::Vec2;
-}
-
-#[derive(PartialEq, Debug, Clone)]
-pub enum Input {
-    Forward,
-    Backwards,
-    Left,
-    Right,
-    /// Cursor offset
-    MoveCursor(math::Vec2),
-    /// y offset
-    Scroll(f32),
 }

@@ -1,13 +1,6 @@
 use crate::{Entities, TypeId};
 use pretty_assertions::assert_eq;
 
-bitflags::bitflags! {
-    pub struct ComponentIds: u32 {
-        const NUMBER = 0b100;
-        const DECIMAL = 0b10;
-        const BOOL = 0b1;
-    }
-}
 #[derive(PartialEq, Clone, Debug)]
 pub enum Components {
     Number(u32),
@@ -16,9 +9,9 @@ pub enum Components {
     Bool(bool),
 }
 impl Components {
-    pub const NUMBER: u32 = ComponentIds::NUMBER.0.0;
-    pub const DECIMAL: u32 = ComponentIds::DECIMAL.0.0;
-    pub const BOOL: u32 = ComponentIds::BOOL.0.0;
+    pub const NUMBER: u32 = 0b100;
+    pub const DECIMAL: u32 = 0b10;
+    pub const BOOL: u32 = 0b1;
 }
 impl TypeId for Components {
     fn get_type(&self) -> u32 {
@@ -154,4 +147,45 @@ pub fn update_entity_should_update_component() {
     // Assert
     let component = &entities[Components::NUMBER][entity];
     assert_eq!(&Some(Components::Number(128)), component);
+}
+
+#[test]
+pub fn update_entity_should_add_new_component() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<Components, 32>();
+    let entity = entities.add_entity(vec![Components::Decimal(1.0)]);
+    // Act
+    entities.update_entity(entity, Components::Number(128));
+    // Assert
+    let component = &entities[Components::NUMBER][entity];
+    assert_eq!(&Some(Components::Number(128)), component);
+}
+
+#[test]
+pub fn get_entities_should_return_all_entities_with_matching_flags() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<Components, 32>();
+    entities.add_entity(vec![Components::Decimal(1.0), Components::Number(128)]); // Target 1 
+    entities.add_entity(vec![
+        Components::Decimal(2.0),
+        Components::Number(256),
+        Components::Bool(true),
+    ]); // Target 2
+    entities.add_entity(vec![Components::Bool(false), Components::Decimal(1.0)]);
+    entities.add_entity(vec![Components::Number(128), Components::Bool(true)]);
+    // Act
+    let entities = entities.get_entities(Components::DECIMAL | Components::NUMBER);
+    // Assert
+    let expected_entities = vec![
+        (0, vec![&Components::Decimal(1.0), &Components::Number(128)]),
+        (
+            1,
+            vec![
+                &Components::Decimal(2.0),
+                &Components::Number(256),
+                &Components::Bool(true),
+            ],
+        ),
+    ];
+    assert_eq!(expected_entities, entities);
 }

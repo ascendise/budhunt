@@ -34,9 +34,9 @@ impl RenderSystem {
         }
     }
 
-    fn handle_inputs(inputs: &[input::Input], projection: &mut gfx::Projection) {
+    fn handle_inputs(inputs: &[Input], projection: &mut gfx::Projection) {
         for input in inputs {
-            if let input::Input::Scroll(scroll) = input {
+            if let Input::Scroll(scroll) = input {
                 let fov = projection.fov + -scroll;
                 projection.fov = fov.clamp(Self::MIN_FOV, Self::MAX_FOV);
             }
@@ -44,7 +44,7 @@ impl RenderSystem {
     }
 }
 impl System for RenderSystem {
-    fn run(&self, entities: &mut Entities, inputs: &[input::Input]) {
+    fn run(&self, entities: &mut Entities, inputs: &[Input]) {
         let mut projection = self.projection.lock().unwrap();
         Self::handle_inputs(inputs, &mut projection);
         let camera = Self::find_camera(entities);

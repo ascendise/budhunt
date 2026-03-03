@@ -1,11 +1,9 @@
-use crate::input::*;
-
-mod input_system_tests;
+mod movement_script_tests;
 
 pub struct StubClock {
     fixed_delta: f32,
 }
-impl Clock for StubClock {
+impl ace::Clock for StubClock {
     fn time_delta(&self) -> f32 {
         self.fixed_delta
     }

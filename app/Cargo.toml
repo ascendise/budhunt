@@ -8,3 +8,8 @@ ace = { version = "0.1.0", path = "../ace" }
 gl = "0.14"
 glfw = "0.61"
 image = { version = "0.25", default-features = false, features = ["png"] }
+
+[dev-dependencies]
+ace = { version = "0.1.0", path = "../ace", features = ["test_utils"] }
+pretty_assertions = "1.4"
+test-case = "3.3"

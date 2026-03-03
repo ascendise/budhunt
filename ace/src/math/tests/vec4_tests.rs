@@ -1,10 +1,5 @@
-use crate::{
-    math::{
-        Vec4,
-        tests::{assert_f32_eq, assert_vec4_eq},
-    },
-    vec4,
-};
+use crate::{assert_float_eq, math::Vec4, vec4};
+use pretty_assertions::assert_eq;
 use test_case::test_case;
 
 #[test]
@@ -12,7 +7,7 @@ pub fn vec4_should_return_vector_with_all_arguments() {
     // Act
     let vec = vec4!(1.0, 2.0, 3.0, 4.0);
     // Assert
-    assert_vec4_eq(&vec, &Vec4::new(1.0, 2.0, 3.0, 4.0));
+    assert_float_eq!(Vec4 vec, Vec4::new(1.0, 2.0, 3.0, 4.0));
 }
 
 #[test]
@@ -20,7 +15,7 @@ pub fn vec4_should_fill_vector_with_argument() {
     // Act
     let vec = vec4!(1.0);
     // Assert
-    assert_vec4_eq(&vec, &Vec4::new(1.0, 1.0, 1.0, 1.0));
+    assert_float_eq!(Vec4 vec, Vec4::new(1.0, 1.0, 1.0, 1.0));
 }
 
 #[test_case(Vec4::new(1.0, 2.0, 3.0, 4.0), 3.0, Vec4::new(4.0, 5.0, 6.0, 7.0))]
@@ -34,7 +29,7 @@ pub fn add_scalar_should_return_vec4_sum(left: Vec4, right: f32, expected: Vec4)
     // Act
     let result = left + right;
     // Assert
-    assert_vec4_eq(&expected, &result);
+    assert_float_eq!(Vec4 expected, result);
 }
 
 #[test_case(Vec4::new(1.0, 2.0, 3.0, 4.0), 3.0, Vec4::new(-2.0, -1.0, 0.0, 1.0))]
@@ -48,7 +43,7 @@ pub fn sub_scalar_should_return_vec4_sum(left: Vec4, right: f32, expected: Vec4)
     // Act
     let result = left - right;
     // Assert
-    assert_vec4_eq(&expected, &result);
+    assert_float_eq!(Vec4 expected, result);
 }
 
 #[test_case(Vec4::new(1.0, 2.0, 3.0, 4.0), 3.0, Vec4::new(3.0, 6.0, 9.0, 12.0))]
@@ -62,7 +57,7 @@ pub fn mul_scalar_should_return_vec4_sum(left: Vec4, right: f32, expected: Vec4)
     // Act
     let result = left * right;
     // Assert
-    assert_vec4_eq(&expected, &result);
+    assert_float_eq!(Vec4 expected, result);
 }
 
 #[test_case(Vec4::new(1.0, 2.0, 3.0, 4.0), 2.0, Vec4::new(0.5, 1.0, 1.5, 2.0))]
@@ -76,7 +71,7 @@ pub fn div_scalar_should_return_vec4_sum(left: Vec4, right: f32, expected: Vec4)
     // Act
     let result = left / right;
     // Assert
-    assert_vec4_eq(&expected, &result);
+    assert_float_eq!(Vec4 expected, result);
 }
 
 #[test_case(
@@ -98,7 +93,7 @@ pub fn add_should_return_vec4_sum(left: Vec4, right: Vec4, expected: Vec4) {
     // Act
     let result = left + right;
     // Assert
-    assert_vec4_eq(&expected, &result);
+    assert_float_eq!(Vec4 expected, result);
 }
 
 #[test_case(
@@ -120,7 +115,7 @@ pub fn sub_should_subtract_right_vec_from_left(left: Vec4, right: Vec4, expected
     // Act
     let result = left - right;
     // Assert
-    assert_vec4_eq(&expected, &result);
+    assert_float_eq!(Vec4 expected, result);
 }
 
 #[test_case(
@@ -137,7 +132,7 @@ pub fn mul_should_return_compoent_wise_multiplication(left: Vec4, right: Vec4, e
     // Act
     let result = left * right;
     // Assert
-    assert_vec4_eq(&expected, &result);
+    assert_float_eq!(Vec4 expected, result);
 }
 
 #[test_case(Vec4::new(1.0, 2.0, 3.0, 1.0), Vec4::new(4.0, 3.0, 2.0, 4.0), 20.0)]
@@ -153,7 +148,7 @@ pub fn dot_should_return_dot_product_of_vectors(left: Vec4, right: Vec4, expecte
     // Act
     let result = left.dot(&right);
     // Assert
-    assert_f32_eq(expected, result);
+    assert_float_eq!(expected, result);
 }
 
 #[test_case(Vec4::new(1.0, 2.0, 3.0, 4.0), 30.0f32.sqrt())]
@@ -163,7 +158,7 @@ pub fn magnitude_should_return_length_of_vector(vec: Vec4, expected: f32) {
     // Act
     let result = vec.magnitude();
     // Assert
-    assert_f32_eq(expected, result);
+    assert_float_eq!(expected, result);
 }
 
 #[test]
@@ -174,7 +169,7 @@ pub fn negate_should_negate_all_elements_of_vector() {
     let result = vec.negate();
     // Assert
     let expected = Vec4::new(-1.0, -2.0, -3.0, -4.0);
-    assert_vec4_eq(&expected, &result);
+    assert_float_eq!(Vec4 expected, result);
 }
 
 #[test_case(Vec4::new(1.0, 1.0, 1.0, 1.0), Vec4::new(0.5, 0.5, 0.5, 0.5))]
@@ -185,5 +180,5 @@ pub fn normalize_should_return_vector_with_length_1(vec: Vec4, expected: Vec4) {
     // Act
     let result = vec.normalize();
     // Assert
-    assert_vec4_eq(&expected, &result);
+    assert_float_eq!(Vec4 expected, result);
 }

@@ -1,3 +1,4 @@
+use crate::scripts::MovementScript;
 use ace::{
     gfx::{self, Image},
     math::{self},
@@ -8,6 +9,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
+mod scripts;
 
 static VERTEX_SHADER_SOURCE: &str = include_str!("../shaders/object.vs.glsl");
 static FRAGMENT_SHADER_SOURCE: &str = include_str!("../shaders/object.fs.glsl");
@@ -32,9 +34,11 @@ fn main() {
     );
     let mut entities = ace::Entities::empty();
     let flashlight = create_spotlight(shader_program);
+    let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
     entities.add_entity(vec![
         ace::Component::Light(flashlight),
         ace::Component::Position(Default::default()),
+        ace::Component::Scripts(vec![Box::new(MovementScript::new(clock.clone()))]),
     ]); //First entity has to be player/camera
     let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
     let monkeys = [
@@ -95,13 +99,16 @@ fn main() {
     entities.add_entity(vec![dir_light]);
     let render_system = ace::gfx::RenderSystem::new(Box::new(renderer), projection);
     let window = Arc::new(Mutex::new(window));
-    let clock = Box::new(ace::input::glfw::GlfwClock::new(glfw.clone()));
-    let input_system = ace::input::InputSystem::new(clock.clone());
+    //let input_system = ace::InputSystem::new(clock.clone());
+    let script_system = ace::scripts::ScriptSystem;
     print_opengl_errors();
-    let input_listener = ace::input::glfw::GlfwInputListener::init(window.clone());
+    let input_listener = ace::glfw_input::GlfwInputListener::init(window.clone());
     let mut world = ace::World::init(
         entities,
-        vec![Box::new(input_system), Box::new(render_system)],
+        vec![
+            /*Box::new(input_system), */ Box::new(script_system),
+            Box::new(render_system),
+        ],
         clock.clone(),
         Box::new(input_listener),
     );

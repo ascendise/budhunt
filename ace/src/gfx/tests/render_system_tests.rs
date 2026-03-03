@@ -1,4 +1,5 @@
-use crate::{gfx::tests::*, math::tests::assert_vec3_eq};
+use crate::assert_float_eq;
+use crate::gfx::tests::*;
 use pretty_assertions::assert_eq;
 use test_case::test_case;
 
@@ -91,12 +92,12 @@ pub fn render_should_transform_models_with_position() {
     // Assert
     let frame = spy.frame(0);
     let model = frame.models.first().expect("Model was not rendered!");
-    assert_vec3_eq(&vec3!(6.0), &model.transform.position);
+    assert_float_eq!(Vec3 vec3!(6.0), model.transform.position);
 }
 
-#[test_case(input::Input::Scroll(-10.0), 55.0)]
-#[test_case(input::Input::Scroll(10.0), 35.0)]
-pub fn render_should_change_fov_on_scroll(scroll: input::Input, expected_fov: f32) {
+#[test_case(Input::Scroll(-10.0), 55.0)]
+#[test_case(Input::Scroll(10.0), 35.0)]
+pub fn render_should_change_fov_on_scroll(scroll: Input, expected_fov: f32) {
     // Arrange
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
@@ -109,16 +110,16 @@ pub fn render_should_change_fov_on_scroll(scroll: input::Input, expected_fov: f3
     assert_eq!(expected_fov, frame.projection.fov);
 }
 
-#[test_case(input::Input::Scroll(-10.0), RenderSystem::MAX_FOV)]
-#[test_case(input::Input::Scroll(10.0), RenderSystem::MIN_FOV)]
-pub fn render_should_clamp_fov_range(scroll: input::Input, expected_fov: f32) {
+#[test_case(Input::Scroll(-10.0), RenderSystem::MAX_FOV)]
+#[test_case(Input::Scroll(10.0), RenderSystem::MIN_FOV)]
+pub fn render_should_clamp_fov_range(scroll: Input, expected_fov: f32) {
     // Arrange
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
     let mut entities = Entities::empty();
     entities.add_entity(vec![Component::Position(Default::default())]);
     // Act
-    let inputs: Vec<input::Input> = (0..100).map(|_| scroll.clone()).collect();
+    let inputs: Vec<Input> = (0..100).map(|_| scroll.clone()).collect();
     sut.run(&mut entities, &inputs);
     // Assert
     let frame = spy.frame(0);

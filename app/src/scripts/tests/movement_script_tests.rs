@@ -1,14 +1,13 @@
-use crate::input::tests::StubClock;
-use crate::math::tests::assert_vec3_eq;
-use crate::*;
-use crate::{
-    input::{Input, InputSystem},
-    math,
-};
+use ace::scripts::Script;
+use ace::*;
+use pretty_assertions::assert_eq;
 use test_case::test_case;
 
-pub fn setup(clock: Box<dyn Clock>) -> InputSystem {
-    InputSystem { clock }
+use crate::scripts::MovementScript;
+use crate::scripts::tests::StubClock;
+
+fn setup(clock: Box<dyn Clock>) -> MovementScript {
+    MovementScript::new(clock)
 }
 
 #[test_case(Input::Forward, vec3!(0.0, 0.0, 1.0))]
@@ -24,14 +23,12 @@ pub fn run_should_move_player_on_matching_input(input: Input, expected_position:
         direction: vec3!(0.0, 0.0, 1.0),
     };
     let camera = Component::Position(camera);
-    let mut entities = Entities::empty();
-    let entity = entities.add_entity(vec![camera]);
+    let entity = vec![&camera];
     // Act
-    sut.run(&mut entities, &[input, Input::MoveCursor(vec2!(90.0, 0.0))]);
+    let updated_components = sut.run(&entity, &[input, Input::MoveCursor(vec2!(90.0, 0.0))]);
     // Assert
-    let camera = &entities.get_components(Component::POSITION)[entity];
-    let camera = component!(camera, Component::Position);
-    assert_vec3_eq(&expected_position, &camera.position)
+    let camera = component!(&updated_components[0], Component::Position);
+    assert_float_eq!(Vec3 expected_position, camera.position)
 }
 
 #[test_case(vec2!(90.0, 0.0), vec3!(0.0, 0.0, 1.0).normalize() ; "look forward")]
@@ -50,12 +47,10 @@ pub fn run_should_turn_camera_on_matching_input(
         direction: vec3!(0.0, 0.0, 1.0),
     };
     let camera = Component::Position(camera);
-    let mut entities = Entities::empty();
-    let entity = entities.add_entity(vec![camera]);
+    let entity = vec![&camera];
     // Act
-    sut.run(&mut entities, &[Input::MoveCursor(cursor_offset)]);
+    let updated_components = sut.run(&entity, &[Input::MoveCursor(cursor_offset)]);
     // Assert
-    let camera = &entities.get_components(Component::POSITION)[entity];
-    let camera = component!(camera, Component::Position);
-    assert_vec3_eq(&expected_camera_direction, &camera.direction)
+    let camera = component!(&updated_components[0], Component::Position);
+    assert_float_eq!(Vec3 expected_camera_direction, camera.direction);
 }

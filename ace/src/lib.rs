@@ -117,7 +117,7 @@ impl<T: TypeId, const E: usize> Entities<T, E> {
 
     pub fn update_entity(&mut self, idx: usize, value: T) {
         let type_id = value.get_type();
-        if self.register[idx] & value.get_type() == 0 {
+        if !self.components.contains_key(&value.get_type()) {
             let empty_bucket = [0; E].map(|_| None);
             self.components.insert(value.get_type(), empty_bucket);
         }

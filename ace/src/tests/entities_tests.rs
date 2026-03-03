@@ -150,6 +150,25 @@ pub fn update_entity_should_update_component() {
 }
 
 #[test]
+pub fn update_entity_should_update_component2() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<Components, 32>();
+    let non_updated_entity = entities.add_entity(vec![Components::Number(1)]);
+    let entity = entities.add_entity(vec![Components::Decimal(1.0)]);
+    // Act
+    entities.update_entity(entity, Components::Number(128));
+    // Assert
+    let component = &entities[Components::NUMBER][entity];
+    assert_eq!(&Some(Components::Number(128)), component);
+    let non_updated_component = &entities[Components::NUMBER][non_updated_entity];
+    assert_eq!(
+        &Some(Components::Number(1)),
+        non_updated_component,
+        "Updating entity cleared bucket!"
+    );
+}
+
+#[test]
 pub fn update_entity_should_add_new_component() {
     // Arrange
     let mut entities = Entities::empty_custom::<Components, 32>();

@@ -1,10 +1,12 @@
 use crate::scripts::MovementScript;
 use ace::{
+    component,
     gfx::{self, Image},
     math::{self},
-    vec3,
+    script, vec3,
 };
 use glfw::Context;
+use std::f32;
 use std::{
     path::Path,
     sync::{Arc, Mutex},
@@ -53,6 +55,15 @@ fn main() {
         vec3!(1.5, 0.2, -1.5),
         vec3!(-1.3, 1.0, -1.5),
     ];
+    let move_script = script!(|entity: &[&ace::Component], _| {
+        let position = entity
+            .iter()
+            .find(|e| matches!(e, ace::Component::Position(_)));
+        let mut position = component!(position, Some(ace::Component::Position)).clone();
+        position.position = position.position + vec3!(0.0, 0.001, 0.0);
+        vec![ace::Component::Position(position)]
+    });
+    let move_script = Box::new(move_script);
     for monkey in monkeys {
         let model = monkey_model.clone();
         let position = ace::Component::Position(ace::Position {
@@ -83,7 +94,8 @@ fn main() {
             position,
             direction: Default::default(),
         });
-        entities.add_entity(vec![light, position]);
+        let script = ace::Component::Scripts(vec![move_script.clone()]);
+        entities.add_entity(vec![light, position, script]);
     }
     let sun_color = vec3!(1.0, 1.0, 1.0);
     let dir_light = gfx::DirectionalLight {

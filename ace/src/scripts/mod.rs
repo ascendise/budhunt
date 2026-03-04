@@ -3,6 +3,24 @@ use crate::*;
 #[cfg(test)]
 mod tests;
 
+#[macro_export]
+macro_rules! script {
+    ($script:expr) => {{
+        #[derive(Clone)]
+        pub struct QuickScript;
+        impl $crate::Script for QuickScript {
+            fn run(
+                &self,
+                entity: &[&$crate::Component],
+                inputs: &[$crate::Input],
+            ) -> Vec<$crate::Component> {
+                $script(entity, inputs)
+            }
+        }
+        QuickScript
+    }};
+}
+
 pub struct ScriptSystem;
 impl ScriptSystem {}
 impl System for ScriptSystem {

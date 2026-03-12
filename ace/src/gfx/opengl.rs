@@ -217,7 +217,7 @@ impl Renderer for OpenGlRenderer {
             for light in lights {
                 match light {
                     Light::Directional(l) => {
-                        gl_dirlight_uniform(dir_count, model.shader, l, &view);
+                        gl_dirlight_uniform(dir_count, model.shader, l);
                         dir_count += 1;
                     }
                     Light::Point(l) => {
@@ -296,13 +296,9 @@ fn gl_float_uniform(shader: Shader, value: f32, key: &str) {
     unsafe { gl::Uniform1f(location, value) }
 }
 
-fn gl_dirlight_uniform(key: i32, shader: Shader, light: &DirectionalLight, view: &math::Matrix4) {
+fn gl_dirlight_uniform(key: i32, shader: Shader, light: &DirectionalLight) {
     let key = &format!("uDirectionalLights[{key}]");
-    gl_vec3_uniform(
-        shader,
-        &to_view_space(view, &light.direction, 0.0),
-        &subkey(key, "direction"),
-    );
+    gl_vec3_uniform(shader, &light.direction, &subkey(key, "direction"));
     gl_light_uniform(shader, &light.material, &subkey(key, "light"));
 }
 fn to_view_space(view: &math::Matrix4, vec: &math::Vec3, w: f32) -> math::Vec3 {

@@ -23,17 +23,6 @@ fn main() {
     let shader_program = renderer
         .compile_shader(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE)
         .expect("Failed to compile model shader");
-    let specular_map = load_image(Path::new(
-        "/home/ascendise/dev/budhunt/app/models/suzanne_specular.png",
-    ));
-    let monkey_mesh = gfx::load_glb_file(
-        Path::new("/home/ascendise/dev/budhunt/app/models/Suzanne.glb"),
-        &specular_map,
-    );
-    let light_mesh = gfx::load_glb_file(
-        Path::new("/home/ascendise/dev/budhunt/app/models/Light.glb"),
-        &Image::empty(),
-    );
     let mut entities = ace::Entities::empty();
     let flashlight = create_spotlight(shader_program);
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
@@ -42,6 +31,14 @@ fn main() {
         ace::Component::Position(Default::default()),
         ace::Component::Scripts(vec![Box::new(MovementScript::new(clock.clone()))]),
     ]); //First entity has to be player/camera
+    // Monkey models
+    let specular_map = load_image(Path::new(
+        "/home/ascendise/dev/budhunt/app/models/suzanne_specular.png",
+    ));
+    let monkey_mesh = gfx::load_glb_file(
+        Path::new("/home/ascendise/dev/budhunt/app/models/Suzanne.glb"),
+        &specular_map,
+    );
     let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
     let monkeys = [
         vec3!(0.0, 0.0, 0.0),
@@ -72,14 +69,11 @@ fn main() {
         });
         entities.add_entity(vec![ace::Component::Model(model), position]);
     }
-    let (width, height) = window.get_size();
-    let projection = gfx::Projection {
-        width: width as f32,
-        height: height as f32,
-        fov: 75.0,
-        near: 0.1,
-        far: 100.0,
-    };
+    // Lights
+    let light_mesh = gfx::load_glb_file(
+        Path::new("/home/ascendise/dev/budhunt/app/models/Light.glb"),
+        &Image::empty(),
+    );
     let point_light = create_point_light(&mut renderer, &light_mesh, shader_program);
     let point_lights = [
         vec3!(0.7, 0.2, 2.0),
@@ -109,6 +103,41 @@ fn main() {
     };
     let dir_light = ace::Component::Light(gfx::Light::Directional(dir_light));
     entities.add_entity(vec![dir_light]);
+    // Plane
+    let plane_specular = load_image(Path::new(
+        "/home/ascendise/dev/budhunt/app/models/plane_specular.png",
+    ));
+    let mut plane_mesh = gfx::load_glb_file(
+        Path::new("/home/ascendise/dev/budhunt/app/models/Plane.glb"),
+        &plane_specular,
+    );
+    // Scale / Move model programatically
+    plane_mesh.vertices = plane_mesh
+        .vertices
+        .iter_mut()
+        .map(|v| {
+            let mut new = v.clone();
+            new.position = new.position * 1024.0;
+            new.position.y -= 10.0;
+            new
+        })
+        .collect();
+    println!("vertices: {:#?}", plane_mesh.vertices);
+    println!("indices: {:#?}", plane_mesh.indices);
+
+    let plane_model = renderer.load_mesh(&plane_mesh, shader_program);
+    entities.add_entity(vec![
+        ace::Component::Model(plane_model),
+        ace::Component::Position(ace::Position::default()),
+    ]);
+    let (width, height) = window.get_size();
+    let projection = gfx::Projection {
+        width: width as f32,
+        height: height as f32,
+        fov: 75.0,
+        near: 0.1,
+        far: 1000.0,
+    };
     let render_system = ace::gfx::RenderSystem::new(Box::new(renderer), projection);
     let window = Arc::new(Mutex::new(window));
     //let input_system = ace::InputSystem::new(clock.clone());
@@ -197,8 +226,8 @@ fn print_opengl_errors() {
 }
 
 fn create_spotlight(shader_program: u32) -> gfx::Light {
-    //let spotlight_color = vec3!(1.0, 1.0, 1.0);
-    let spotlight_color = vec3!(1.0, 0.0, 0.0);
+    let spotlight_color = vec3!(1.0, 1.0, 1.0);
+    //let spotlight_color = vec3!(1.0, 0.0, 0.0);
     let spot_light = gfx::SpotLight {
         shader: shader_program,
         direction: Default::default(),

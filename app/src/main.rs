@@ -36,7 +36,7 @@ fn main() {
         "/home/ascendise/dev/budhunt/app/models/suzanne_specular.png",
     ));
     let monkey_mesh = gfx::load_glb_file(
-        Path::new("/home/ascendise/dev/budhunt/app/models/Suzanne.glb"),
+        Path::new("/home/ascendise/dev/budhunt/app/models/suzanne.glb"),
         &specular_map,
     );
     let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
@@ -71,7 +71,7 @@ fn main() {
     }
     // Lights
     let light_mesh = gfx::load_glb_file(
-        Path::new("/home/ascendise/dev/budhunt/app/models/Light.glb"),
+        Path::new("/home/ascendise/dev/budhunt/app/models/light.glb"),
         &Image::empty(),
     );
     let point_light = create_point_light(&mut renderer, &light_mesh, shader_program);

@@ -32,13 +32,8 @@ fn main() {
         ace::Component::Scripts(vec![Box::new(MovementScript::new(clock.clone()))]),
     ]); //First entity has to be player/camera
     // Monkey models
-    let specular_map = load_image(Path::new(
-        "/home/ascendise/dev/budhunt/app/models/suzanne_specular.png",
-    ));
-    let monkey_mesh = gfx::load_glb_file(
-        Path::new("/home/ascendise/dev/budhunt/app/models/suzanne.glb"),
-        &specular_map,
-    );
+    let specular_map = load_image(Path::new("./app/models/suzanne_specular.png"));
+    let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/suzanne.glb"), &specular_map);
     let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
     let monkeys = [
         vec3!(0.0, 0.0, 0.0),
@@ -70,10 +65,7 @@ fn main() {
         entities.add_entity(vec![ace::Component::Model(model), position]);
     }
     // Lights
-    let light_mesh = gfx::load_glb_file(
-        Path::new("/home/ascendise/dev/budhunt/app/models/light.glb"),
-        &Image::empty(),
-    );
+    let light_mesh = gfx::load_glb_file(Path::new("./app/models/light.glb"), &Image::empty());
     let point_light = create_point_light(&mut renderer, &light_mesh, shader_program);
     let point_lights = [
         vec3!(0.7, 0.2, 2.0),
@@ -104,13 +96,8 @@ fn main() {
     let dir_light = ace::Component::Light(gfx::Light::Directional(dir_light));
     entities.add_entity(vec![dir_light]);
     // Plane
-    let plane_specular = load_image(Path::new(
-        "/home/ascendise/dev/budhunt/app/models/plane_specular.png",
-    ));
-    let mut plane_mesh = gfx::load_glb_file(
-        Path::new("/home/ascendise/dev/budhunt/app/models/Plane.glb"),
-        &plane_specular,
-    );
+    let plane_specular = load_image(Path::new("./app/models/plane_specular.png"));
+    let mut plane_mesh = gfx::load_glb_file(Path::new("./app/models/plane.glb"), &plane_specular);
     // Scale / Move model programatically
     plane_mesh.vertices = plane_mesh
         .vertices
@@ -122,9 +109,6 @@ fn main() {
             new
         })
         .collect();
-    println!("vertices: {:#?}", plane_mesh.vertices);
-    println!("indices: {:#?}", plane_mesh.indices);
-
     let plane_model = renderer.load_mesh(&plane_mesh, shader_program);
     entities.add_entity(vec![
         ace::Component::Model(plane_model),

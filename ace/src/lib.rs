@@ -1,6 +1,7 @@
+use ace_proc_macros::Component;
 use std::ops::{Index, IndexMut};
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, map::Entry};
 
 pub mod gfx;
 pub mod glfw_input;
@@ -64,20 +65,18 @@ impl World {
 }
 
 #[derive(Debug)]
-pub struct Entities<T: TypeId = Component, const E: usize = 255> {
+pub struct Entities<T: Component = Components, const E: usize = 255> {
     components: IndexMap<u32, [Option<T>; E]>,
     empty_bucket: [Option<T>; E],
     entities: usize,
     register: [u32; E],
 }
 impl Entities {
-    pub const PLAYER_IDX: usize = 0;
-
     pub fn empty() -> Self {
         Self::empty_custom()
     }
 
-    pub fn empty_custom<T: TypeId, const E: usize>() -> Entities<T, E> {
+    pub fn empty_custom<T: Component, const E: usize>() -> Entities<T, E> {
         let components = Default::default();
         let empty_bucket = [0; E].map(|_| None);
         Entities::<T, E> {
@@ -88,26 +87,17 @@ impl Entities {
         }
     }
 }
-impl<T: TypeId, const E: usize> Entities<T, E> {
+impl<T: Component, const E: usize> Entities<T, E> {
     pub fn count(&self) -> usize {
         self.entities
     }
 
-    pub fn add_entity(&mut self, entity: Vec<T>) -> usize {
+    pub fn create_entity(&mut self, entity: Vec<T>) -> usize {
         let idx = self.entities;
         self.entities = idx + 1;
-        let mut components = 0u32;
         for component in entity {
-            let type_id = component.get_type();
-            components |= type_id;
-            if !self.components.contains_key(&type_id) {
-                let empty_bucket = [0; E].map(|_| None);
-                self.components.insert(type_id, empty_bucket);
-            };
-            let bucket = self.components.get_mut(&type_id).unwrap();
-            bucket[idx] = Some(component);
+            self.update_entity(idx, component);
         }
-        self.register[idx] = components;
         idx
     }
 
@@ -117,19 +107,27 @@ impl<T: TypeId, const E: usize> Entities<T, E> {
 
     pub fn update_entity(&mut self, idx: usize, value: T) {
         let type_id = value.get_type();
-        if !self.components.contains_key(&value.get_type()) {
-            let empty_bucket = [0; E].map(|_| None);
-            self.components.insert(value.get_type(), empty_bucket);
+        self.register[idx] |= type_id;
+        if value.is_marker() {
+            return;
         }
-        self[type_id][idx] = Some(value)
+        let bucket = self.get_or_create_bucket(type_id);
+        bucket[idx] = Some(value);
+    }
+
+    fn get_or_create_bucket(&mut self, type_id: u32) -> &mut [Option<T>] {
+        match self.components.entry(type_id) {
+            Entry::Occupied(b) => b.into_mut(),
+            Entry::Vacant(e) => e.insert([0; E].map(|_| None)),
+        }
     }
 
     pub fn get_components(&self, component_type: u32) -> Vec<&T> {
         self.get_bucket(component_type).iter().flatten().collect()
     }
 
-    /// Returns slice of bucket containing the specified component type
-    /// Length of slice is equal to [Entities::count]
+    /// Returns slice of bucket containing the specified component type.
+    /// Length of slice is equal to [Entities::count].
     pub fn get_bucket(&self, component_type: u32) -> &[Option<T>] {
         let bucket = self
             .components
@@ -138,7 +136,7 @@ impl<T: TypeId, const E: usize> Entities<T, E> {
         &bucket[0..self.entities]
     }
 
-    /// Takes a set of bitflags OR'd together and returns filtered (only specified components) entities
+    /// Takes a set of bitflags OR'd together and returns filtered (only specified components) entities.
     fn get_entities(&self, components: u32) -> Vec<(usize, Vec<&T>)> {
         let mut entities = vec![];
         for e in 0..self.entities {
@@ -151,7 +149,7 @@ impl<T: TypeId, const E: usize> Entities<T, E> {
         entities
     }
 }
-impl<T: TypeId, const E: usize> IndexMut<u32> for Entities<T, E> {
+impl<T: Component, const E: usize> IndexMut<u32> for Entities<T, E> {
     fn index_mut(&mut self, index: u32) -> &mut Self::Output {
         self.components
             .get_mut(&index)
@@ -159,7 +157,7 @@ impl<T: TypeId, const E: usize> IndexMut<u32> for Entities<T, E> {
     }
 }
 
-impl<T: TypeId, const E: usize> Index<u32> for Entities<T, E> {
+impl<T: Component, const E: usize> Index<u32> for Entities<T, E> {
     type Output = [Option<T>; E];
 
     fn index(&self, index: u32) -> &Self::Output {
@@ -169,31 +167,21 @@ impl<T: TypeId, const E: usize> Index<u32> for Entities<T, E> {
     }
 }
 
-pub enum Component {
+#[derive(Component)]
+pub enum Components {
     Position(Position),
     Model(gfx::Model),
     Light(gfx::Light),
     Scripts(Vec<Box<dyn scripts::Script>>),
-}
-impl Component {
-    pub const POSITION: u32 = 0b1;
-    pub const MODEL: u32 = 0b10;
-    pub const LIGHT: u32 = 0b100;
-    pub const SCRIPTS: u32 = 0b1000;
-}
-impl TypeId for Component {
-    fn get_type(&self) -> u32 {
-        match self {
-            Component::Position(_) => Component::POSITION,
-            Component::Model(_) => Component::MODEL,
-            Component::Light(_) => Component::LIGHT,
-            Component::Scripts(_) => Component::SCRIPTS,
-        }
-    }
+    Player,
 }
 
-pub trait TypeId {
+pub trait Component {
+    /// Returns the bitflag indicating the specific component type.
     fn get_type(&self) -> u32;
+    /// Returns if the component is a marker component, e.g. a component
+    /// without data, which has no bucket.
+    fn is_marker(&self) -> bool;
 }
 
 pub trait System {
@@ -201,9 +189,9 @@ pub trait System {
 }
 
 pub trait Clock {
-    /// Returns time since last frame in seconds
+    /// Returns time since last frame in seconds.
     fn time_delta(&self) -> f32;
-    /// Updates time delta
+    /// Updates time delta.
     fn stop_frame_time(&self);
 }
 

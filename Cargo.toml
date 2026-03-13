@@ -1,3 +1,3 @@
 [workspace]
 resolver = "3"
-members = ["ace","app"]
+members = ["ace", "ace_proc_macros","app"]

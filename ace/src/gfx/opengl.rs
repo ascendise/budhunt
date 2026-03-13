@@ -167,7 +167,7 @@ impl OpenGlRenderer {
         }
     }
 
-    /// [Shader] needs to be freed using [gl::DeleteShader]
+    /// [Shader] needs to be freed using [gl::DeleteShader()]
     unsafe fn compile(
         shader_source: &str,
         shader_type: gl::types::GLenum,

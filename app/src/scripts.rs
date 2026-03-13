@@ -6,12 +6,12 @@ pub struct MovementScript {
     clock: Box<dyn ace::Clock>,
 }
 impl ace::Script for MovementScript {
-    fn run(&self, player: &[&ace::Component], inputs: &[ace::Input]) -> Vec<ace::Component> {
+    fn run(&self, player: &[&ace::Components], inputs: &[ace::Input]) -> Vec<ace::Components> {
         let camera = player
             .iter()
-            .find(|c| matches!(c, ace::Component::Position(_)))
+            .find(|c| matches!(c, ace::Components::Position(_)))
             .expect("No camera position found");
-        let mut camera = component!(camera, ace::Component::Position).clone();
+        let mut camera = component!(camera, ace::Components::Position).clone();
         let cursor_offset = inputs
             .iter()
             .find(|i| matches!(i, ace::Input::MoveCursor(_)))
@@ -19,7 +19,7 @@ impl ace::Script for MovementScript {
             .unwrap_or(vec2!(0.0));
         let move_dir = self.turn_camera(&mut camera, &cursor_offset);
         self.move_camera(&mut camera, inputs, &move_dir);
-        vec![ace::Component::Position(camera)]
+        vec![ace::Components::Position(camera)]
     }
 }
 impl MovementScript {

@@ -26,11 +26,6 @@ fn main() {
     let mut entities = ace::Entities::empty();
     let flashlight = create_spotlight(shader_program);
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
-    entities.add_entity(vec![
-        ace::Component::Light(flashlight),
-        ace::Component::Position(Default::default()),
-        ace::Component::Scripts(vec![Box::new(MovementScript::new(clock.clone()))]),
-    ]); //First entity has to be player/camera
     // Monkey models
     let specular_map = load_image(Path::new("./app/models/suzanne_specular.png"));
     let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/suzanne.glb"), &specular_map);
@@ -47,22 +42,22 @@ fn main() {
         vec3!(1.5, 0.2, -1.5),
         vec3!(-1.3, 1.0, -1.5),
     ];
-    let move_script = script!(|entity: &[&ace::Component], _| {
+    let move_script = script!(|entity: &[&ace::Components], _| {
         let position = entity
             .iter()
-            .find(|e| matches!(e, ace::Component::Position(_)));
-        let mut position = component!(position, Some(ace::Component::Position)).clone();
+            .find(|e| matches!(e, ace::Components::Position(_)));
+        let mut position = component!(position, Some(ace::Components::Position)).clone();
         position.position = position.position + vec3!(0.0, 0.001, 0.0);
-        vec![ace::Component::Position(position)]
+        vec![ace::Components::Position(position)]
     });
     let move_script = Box::new(move_script);
     for monkey in monkeys {
         let model = monkey_model.clone();
-        let position = ace::Component::Position(ace::Position {
+        let position = ace::Components::Position(ace::Position {
             position: monkey,
             direction: Default::default(),
         });
-        entities.add_entity(vec![ace::Component::Model(model), position]);
+        entities.create_entity(vec![ace::Components::Model(model), position]);
     }
     // Lights
     let light_mesh = gfx::load_glb_file(Path::new("./app/models/light.glb"), &Image::empty());
@@ -75,13 +70,13 @@ fn main() {
     ];
     for position in point_lights {
         let light = gfx::Light::Point(point_light.clone());
-        let light = ace::Component::Light(light);
-        let position = ace::Component::Position(ace::Position {
+        let light = ace::Components::Light(light);
+        let position = ace::Components::Position(ace::Position {
             position,
             direction: Default::default(),
         });
-        let script = ace::Component::Scripts(vec![move_script.clone()]);
-        entities.add_entity(vec![light, position, script]);
+        let script = ace::Components::Scripts(vec![move_script.clone()]);
+        entities.create_entity(vec![light, position, script]);
     }
     let sun_color = vec3!(1.0, 1.0, 1.0);
     let dir_light = gfx::DirectionalLight {
@@ -93,8 +88,8 @@ fn main() {
             specular: &vec3!(1.0, 1.0, 1.0) * &sun_color,
         },
     };
-    let dir_light = ace::Component::Light(gfx::Light::Directional(dir_light));
-    entities.add_entity(vec![dir_light]);
+    let dir_light = ace::Components::Light(gfx::Light::Directional(dir_light));
+    entities.create_entity(vec![dir_light]);
     // Plane
     let plane_specular = load_image(Path::new("./app/models/plane_specular.png"));
     let mut plane_mesh = gfx::load_glb_file(Path::new("./app/models/plane.glb"), &plane_specular);
@@ -110,9 +105,16 @@ fn main() {
         })
         .collect();
     let plane_model = renderer.load_mesh(&plane_mesh, shader_program);
-    entities.add_entity(vec![
-        ace::Component::Model(plane_model),
-        ace::Component::Position(ace::Position::default()),
+    entities.create_entity(vec![
+        ace::Components::Model(plane_model),
+        ace::Components::Position(ace::Position::default()),
+    ]);
+    // Player
+    entities.create_entity(vec![
+        ace::Components::Light(flashlight),
+        ace::Components::Position(Default::default()),
+        ace::Components::Scripts(vec![Box::new(MovementScript::new(clock.clone()))]),
+        ace::Components::Player,
     ]);
     let (width, height) = window.get_size();
     let projection = gfx::Projection {

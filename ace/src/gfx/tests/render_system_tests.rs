@@ -21,8 +21,11 @@ pub fn render_should_pass_objects_to_renderer() {
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
     let mut entities = Entities::empty();
-    entities.add_entity(vec![Component::Position(Default::default())]); // Camera
-    entities.add_entity(vec![Component::Position(Default::default())]); // Some random filler
+    entities.create_entity(vec![
+        Components::Player,
+        Components::Position(Default::default()),
+    ]); // Camera
+    entities.create_entity(vec![Components::Position(Default::default())]); // Some random filler
     let expected_model = Model {
         vao: 123,
         shader: 123,
@@ -36,7 +39,7 @@ pub fn render_should_pass_objects_to_renderer() {
         vertices: 3,
         indices: 3,
     };
-    entities.add_entity(vec![Component::Model(expected_model.clone())]);
+    entities.create_entity(vec![Components::Model(expected_model.clone())]);
     let expected_light = DirectionalLight {
         shader: 123,
         direction: vec3!(0.0, -1.0, 0.0),
@@ -47,7 +50,7 @@ pub fn render_should_pass_objects_to_renderer() {
         },
     };
     let expected_light = Light::Directional(expected_light);
-    entities.add_entity(vec![Component::Light(expected_light.clone())]);
+    entities.create_entity(vec![Components::Light(expected_light.clone())]);
     // Act
     sut.run(&mut entities, &[]);
     // Assert
@@ -62,7 +65,10 @@ pub fn render_should_transform_models_with_position() {
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
     let mut entities = Entities::empty();
-    entities.add_entity(vec![Component::Position(Default::default())]); // Camera
+    entities.create_entity(vec![
+        Components::Player,
+        Components::Position(Default::default()),
+    ]); // Camera
     let model = Model {
         vao: 123,
         shader: 123,
@@ -83,9 +89,9 @@ pub fn render_should_transform_models_with_position() {
         position: vec3!(5.0),
         direction: vec3!(0.0),
     };
-    entities.add_entity(vec![
-        Component::Model(model.clone()),
-        Component::Position(position),
+    entities.create_entity(vec![
+        Components::Model(model.clone()),
+        Components::Position(position),
     ]);
     // Act
     sut.run(&mut entities, &[]);
@@ -102,7 +108,10 @@ pub fn render_should_change_fov_on_scroll(scroll: Input, expected_fov: f32) {
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
     let mut entities = Entities::empty();
-    entities.add_entity(vec![Component::Position(Default::default())]);
+    entities.create_entity(vec![
+        Components::Player,
+        Components::Position(Default::default()),
+    ]);
     // Act
     sut.run(&mut entities, &[scroll]);
     // Assert
@@ -117,7 +126,10 @@ pub fn render_should_clamp_fov_range(scroll: Input, expected_fov: f32) {
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
     let mut entities = Entities::empty();
-    entities.add_entity(vec![Component::Position(Default::default())]);
+    entities.create_entity(vec![
+        Components::Player,
+        Components::Position(Default::default()),
+    ]);
     // Act
     let inputs: Vec<Input> = (0..100).map(|_| scroll.clone()).collect();
     sut.run(&mut entities, &inputs);

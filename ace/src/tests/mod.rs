@@ -6,9 +6,9 @@ mod entities_tests;
 #[test]
 pub fn component_should_return_specific_component_type() {
     //Arrange
-    let component: Component = Component::Position(Default::default());
+    let component: Components = Components::Position(Default::default());
     //Act
-    let position = component!(component, Component::Position);
+    let position = component!(component, Components::Position);
     //Assert
     assert_eq!(Position::default(), position); // At this point we already asserted that we can get
     // the inner value
@@ -17,10 +17,10 @@ pub fn component_should_return_specific_component_type() {
 #[test]
 pub fn component_should_return_specific_component_type_for_options() {
     //Arrange
-    let component: Component = Component::Position(Default::default());
-    let component: Option<Component> = Some(component);
+    let component: Components = Components::Position(Default::default());
+    let component: Option<Components> = Some(component);
     //Act
-    let position = component!(component, Some(Component::Position));
+    let position = component!(component, Some(Components::Position));
     //Assert
     assert_eq!(Position::default(), position); // At this point we already asserted that we can get
     // the inner value
@@ -30,7 +30,7 @@ pub fn component_should_return_specific_component_type_for_options() {
 #[should_panic]
 pub fn component_should_panic_when_getting_wrong_type() {
     //Arrange
-    let component: Component = Component::Position(Default::default());
+    let component: Components = Components::Position(Default::default());
     //Act
-    let _ = component!(component, Component::Model);
+    let _ = component!(component, Components::Model);
 }

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ace_proc_macros = { version = "0.1.0", path = "../ace_proc_macros" }
 gl = "0.14"
 glfw = "0.61"
 gltf = "1.4"

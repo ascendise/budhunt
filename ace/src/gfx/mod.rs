@@ -22,12 +22,14 @@ impl RenderSystem {
     }
 
     fn find_camera(entities: &mut Entities) -> Camera {
-        let player = entities.get_entity(Entities::PLAYER_IDX);
-        let camera = player
+        let entities = entities.get_entities(Components::PLAYER | Components::POSITION);
+        let (_, components) = entities.first().expect("Player not found!");
+        let camera = components
             .iter()
-            .find(|c| matches!(c, Component::Position(_)))
-            .expect("No camera position found");
-        let camera = component!(camera, Component::Position).clone();
+            .find(|c| matches!(c, Components::Position(_)))
+            .map(|c| component!(c, Components::Position))
+            .unwrap()
+            .clone();
         gfx::Camera {
             position: camera.position,
             direction: camera.direction,
@@ -48,25 +50,25 @@ impl System for RenderSystem {
         let mut projection = self.projection.lock().unwrap();
         Self::handle_inputs(inputs, &mut projection);
         let camera = Self::find_camera(entities);
-        let models = entities.get_bucket(Component::MODEL);
-        let positions = entities.get_bucket(Component::POSITION);
-        let lights = entities.get_bucket(Component::LIGHT);
+        let models = entities.get_bucket(Components::MODEL);
+        let positions = entities.get_bucket(Components::POSITION);
+        let lights = entities.get_bucket(Components::LIGHT);
         let mut render_models = vec![];
         let mut render_lights = vec![];
         for (m, model) in models.iter().enumerate() {
-            if let Some(Component::Model(model)) = &model {
+            if let Some(Components::Model(model)) = &model {
                 let mut model = model.clone();
                 let position = &positions[m];
                 let position =
-                    component!(position, Some(Component::Position) or &Default::default());
+                    component!(position, Some(Components::Position) or &Default::default());
                 model.transform.position = &model.transform.position + &position.position;
                 render_models.push(model);
             }
-            if let Some(Component::Light(light)) = &lights[m] {
+            if let Some(Components::Light(light)) = &lights[m] {
                 let mut light = light.clone();
                 let position = &positions[m];
                 let position =
-                    component!(position, Some(Component::Position) or &Default::default());
+                    component!(position, Some(Components::Position) or &Default::default());
                 light.transform(position);
                 render_lights.push(light);
             }

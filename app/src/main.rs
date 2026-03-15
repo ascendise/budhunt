@@ -24,121 +24,15 @@ fn main() {
         .compile_shader(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE)
         .expect("Failed to compile model shader");
     let mut entities = ace::Entities::empty();
-    let flashlight = create_spotlight(shader_program);
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
-    // Monkey models
-    let specular_map = load_image(Path::new("./app/models/suzanne_specular.png"));
-    let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/suzanne.glb"), &specular_map);
-    let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
-    let monkeys = [
-        vec3!(0.0, 0.0, 0.0),
-        vec3!(2.0, 5.0, -15.0),
-        vec3!(-1.5, -2.2, -2.5),
-        vec3!(-3.8, -2.0, -12.3),
-        vec3!(2.4, -0.4, -3.5),
-        vec3!(-1.7, 3.0, 7.5),
-        vec3!(1.3, -2.0, -2.5),
-        vec3!(1.5, 2.0, -2.5),
-        vec3!(1.5, 0.2, -1.5),
-        vec3!(-1.3, 1.0, -1.5),
-    ];
-    let move_script = script!(|entity: &[&ace::Components], _| {
-        let position = entity
-            .iter()
-            .find(|e| matches!(e, ace::Components::Position(_)));
-        let mut position = component!(position, Some(ace::Components::Position)).clone();
-        position.position = position.position + vec3!(0.0, 0.001, 0.0);
-        vec![ace::Components::Position(position)]
-    });
-    let move_script = Box::new(move_script);
-    for monkey in monkeys {
-        let model = monkey_model.clone();
-        let position = ace::Components::Position(ace::Position {
-            position: monkey,
-            direction: Default::default(),
-        });
-        entities.create_entity(vec![ace::Components::Model(model), position]);
-    }
-    // Lights
-    let light_mesh = gfx::load_glb_file(Path::new("./app/models/light.glb"), &Image::empty());
-    let point_light = create_point_light(&mut renderer, &light_mesh, shader_program);
-    let point_lights = [
-        vec3!(0.7, 0.2, 2.0),
-        vec3!(2.3, -3.3, -4.0),
-        vec3!(-4.0, 2.0, -12.0),
-        vec3!(0.0, 0.0, -3.0),
-    ];
-    for position in point_lights {
-        let light = gfx::Light::Point(point_light.clone());
-        let light = ace::Components::Light(light);
-        let position = ace::Components::Position(ace::Position {
-            position,
-            direction: Default::default(),
-        });
-        let script = ace::Components::Scripts(vec![move_script.clone()]);
-        entities.create_entity(vec![light, position, script]);
-    }
-    let sun_color = vec3!(1.0, 1.0, 1.0);
-    let dir_light = gfx::DirectionalLight {
-        shader: shader_program,
-        direction: vec3!(-0.2, -1.0, -0.3),
-        material: gfx::Material {
-            ambient: &vec3!(0.2, 0.2, 0.2) * &sun_color,
-            diffuse: &vec3!(0.5, 0.5, 0.5) * &sun_color,
-            specular: &vec3!(1.0, 1.0, 1.0) * &sun_color,
-        },
-    };
-    let dir_light = ace::Components::Light(gfx::Light::Directional(dir_light));
-    entities.create_entity(vec![dir_light]);
-    // Plane
-    let plane_specular = load_image(Path::new("./app/models/plane_specular.png"));
-    let mut plane_mesh = gfx::load_glb_file(Path::new("./app/models/plane.glb"), &plane_specular);
-    // Scale / Move model programatically
-    plane_mesh.vertices = plane_mesh
-        .vertices
-        .iter_mut()
-        .map(|v| {
-            let mut new = v.clone();
-            new.position = new.position * 1024.0;
-            new.position.y -= 10.0;
-            new
-        })
-        .collect();
-    let plane_model = renderer.load_mesh(&plane_mesh, shader_program);
-    entities.create_entity(vec![
-        ace::Components::Model(plane_model),
-        ace::Components::Position(ace::Position::default()),
-    ]);
-    // Player
-    entities.create_entity(vec![
-        ace::Components::Light(flashlight),
-        ace::Components::Position(Default::default()),
-        ace::Components::Scripts(vec![Box::new(MovementScript::new(clock.clone()))]),
-        ace::Components::Player,
-    ]);
-    let (width, height) = window.get_size();
-    let projection = gfx::Projection {
-        width: width as f32,
-        height: height as f32,
-        fov: 75.0,
-        near: 0.1,
-        far: 1000.0,
-    };
-    let render_system = ace::gfx::RenderSystem::new(Box::new(renderer), projection);
+    spawn_monkeys(&mut renderer, shader_program, &mut entities);
+    spawn_point_lights(&mut renderer, shader_program, &mut entities);
+    spawn_sun(shader_program, &mut entities);
+    spawn_floor(&mut renderer, shader_program, &mut entities);
+    spawn_player(&mut entities, shader_program, clock.clone());
     let window = Arc::new(Mutex::new(window));
-    //let input_system = ace::InputSystem::new(clock.clone());
-    let script_system = ace::scripts::ScriptSystem;
+    let mut world = setup_world(renderer, entities, clock, &window);
     print_opengl_errors();
-    let input_listener = ace::glfw_input::GlfwInputListener::init(window.clone());
-    let mut world = ace::World::init(
-        entities,
-        vec![
-            /*Box::new(input_system), */ Box::new(script_system),
-            Box::new(render_system),
-        ],
-        clock.clone(),
-        Box::new(input_listener),
-    );
     while !window.lock().unwrap().should_close() {
         world.run_frame();
         window.lock().unwrap().swap_buffers();
@@ -165,19 +59,87 @@ fn setup_window(glfw: &mut glfw::Glfw) -> glfw::PWindow {
     window
 }
 
-fn load_image(path: &Path) -> gfx::Image {
-    let texture = image::ImageReader::open(path)
-        .expect("Failed loading texture")
-        .decode()
-        .unwrap();
-    let texture = texture.into_rgba8();
-    gfx::Image {
-        data: texture.pixels().flat_map(|p| p.0).collect(),
-        width: texture.width(),
-        height: texture.height(),
+fn create_spotlight(shader_program: u32) -> gfx::Light {
+    let spotlight_color = vec3!(1.0, 1.0, 1.0);
+    //let spotlight_color = vec3!(1.0, 0.0, 0.0);
+    let spot_light = gfx::SpotLight {
+        shader: shader_program,
+        direction: Default::default(),
+        position: Default::default(),
+        inner_cutoff: math::radians(10.0).cos(),
+        outer_cutoff: math::radians(15.0).cos(),
+        material: gfx::Material {
+            ambient: &vec3!(0.2, 0.2, 0.2) * &spotlight_color,
+            diffuse: &vec3!(0.5, 0.5, 0.5) * &spotlight_color,
+            specular: &vec3!(1.0, 1.0, 1.0) * &spotlight_color,
+        },
+    };
+    gfx::Light::Spot(spot_light)
+}
+
+fn spawn_monkeys(
+    renderer: &mut gfx::opengl::OpenGlRenderer,
+    shader_program: u32,
+    entities: &mut ace::Entities,
+) {
+    let specular_map = load_image(Path::new("./app/models/suzanne_specular.png"));
+    let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/suzanne.glb"), &specular_map);
+    let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
+    let monkeys = [
+        vec3!(0.0, 0.0, 0.0),
+        vec3!(2.0, 5.0, -15.0),
+        vec3!(-1.5, -2.2, -2.5),
+        vec3!(-3.8, -2.0, -12.3),
+        vec3!(2.4, -0.4, -3.5),
+        vec3!(-1.7, 3.0, 7.5),
+        vec3!(1.3, -2.0, -2.5),
+        vec3!(1.5, 2.0, -2.5),
+        vec3!(1.5, 0.2, -1.5),
+        vec3!(-1.3, 1.0, -1.5),
+    ];
+    for monkey in monkeys {
+        let model = monkey_model.clone();
+        let position = ace::Components::Position(ace::Position {
+            position: monkey,
+            direction: Default::default(),
+        });
+        entities.create_entity(vec![ace::Components::Model(model), position]);
     }
 }
 
+fn spawn_point_lights(
+    renderer: &mut gfx::opengl::OpenGlRenderer,
+    shader_program: u32,
+    entities: &mut ace::Entities,
+) {
+    let light_mesh = gfx::load_glb_file(Path::new("./app/models/light.glb"), &Image::empty());
+    let point_light = create_point_light(renderer, &light_mesh, shader_program);
+    let point_lights = [
+        vec3!(0.7, 0.2, 2.0),
+        vec3!(2.3, -3.3, -4.0),
+        vec3!(-4.0, 2.0, -12.0),
+        vec3!(0.0, 0.0, -3.0),
+    ];
+    let move_script = script!(|entity: &[&ace::Components], _| {
+        let position = entity
+            .iter()
+            .find(|e| matches!(e, ace::Components::Position(_)));
+        let mut position = component!(position, Some(ace::Components::Position)).clone();
+        position.position = position.position + vec3!(0.0, 0.001, 0.0);
+        vec![ace::Components::Position(position)]
+    });
+    let move_script = Box::new(move_script);
+    for position in point_lights {
+        let light = gfx::Light::Point(point_light.clone());
+        let light = ace::Components::Light(light);
+        let position = ace::Components::Position(ace::Position {
+            position,
+            direction: Default::default(),
+        });
+        let script = ace::Components::Scripts(vec![move_script.clone()]);
+        entities.create_entity(vec![light, position, script]);
+    }
+}
 fn create_point_light(
     renderer: &mut gfx::opengl::OpenGlRenderer,
     mesh: &gfx::Mesh,
@@ -199,6 +161,98 @@ fn create_point_light(
     }
 }
 
+fn spawn_sun(shader_program: u32, entities: &mut ace::Entities) {
+    let sun_color = vec3!(1.0, 1.0, 1.0);
+    let dir_light = gfx::DirectionalLight {
+        shader: shader_program,
+        direction: vec3!(-0.2, -1.0, -0.3),
+        material: gfx::Material {
+            ambient: &vec3!(0.2, 0.2, 0.2) * &sun_color,
+            diffuse: &vec3!(0.5, 0.5, 0.5) * &sun_color,
+            specular: &vec3!(1.0, 1.0, 1.0) * &sun_color,
+        },
+    };
+    let dir_light = ace::Components::Light(gfx::Light::Directional(dir_light));
+    entities.create_entity(vec![dir_light]);
+}
+
+fn spawn_floor(
+    renderer: &mut gfx::opengl::OpenGlRenderer,
+    shader_program: u32,
+    entities: &mut ace::Entities,
+) {
+    let plane_specular = load_image(Path::new("./app/models/plane_specular.png"));
+    let mut plane_mesh = gfx::load_glb_file(Path::new("./app/models/plane.glb"), &plane_specular);
+    // Scale / Move model programatically
+    plane_mesh.vertices = plane_mesh
+        .vertices
+        .iter_mut()
+        .map(|v| {
+            let mut new = v.clone();
+            new.position = new.position * 1024.0;
+            new.position.y -= 10.0;
+            new
+        })
+        .collect();
+    let plane_model = renderer.load_mesh(&plane_mesh, shader_program);
+    entities.create_entity(vec![
+        ace::Components::Model(plane_model),
+        ace::Components::Position(ace::Position::default()),
+    ]);
+}
+
+fn spawn_player(
+    entities: &mut ace::Entities,
+    shader_program: u32,
+    clock: Box<ace::glfw_input::GlfwClock>,
+) {
+    let flashlight = create_spotlight(shader_program);
+    entities.create_entity(vec![
+        ace::Components::Light(flashlight),
+        ace::Components::Position(Default::default()),
+        ace::Components::Scripts(vec![Box::new(MovementScript::new(clock))]),
+        ace::Components::Player,
+    ]);
+}
+
+fn load_image(path: &Path) -> gfx::Image {
+    let texture = image::ImageReader::open(path)
+        .expect("Failed loading texture")
+        .decode()
+        .unwrap();
+    let texture = texture.into_rgba8();
+    gfx::Image {
+        data: texture.pixels().flat_map(|p| p.0).collect(),
+        width: texture.width(),
+        height: texture.height(),
+    }
+}
+
+fn setup_world(
+    renderer: gfx::opengl::OpenGlRenderer,
+    entities: ace::Entities,
+    clock: Box<ace::glfw_input::GlfwClock>,
+    window: &Arc<Mutex<glfw::PWindow>>,
+) -> ace::World {
+    let (width, height) = window.lock().unwrap().get_size();
+    let projection = gfx::Projection {
+        width: width as f32,
+        height: height as f32,
+        fov: 75.0,
+        near: 0.1,
+        far: 1000.0,
+    };
+    let render_system = ace::gfx::RenderSystem::new(Box::new(renderer), projection);
+    let script_system = ace::scripts::ScriptSystem;
+    let input_listener = ace::glfw_input::GlfwInputListener::init(window.clone());
+    ace::World::init(
+        entities,
+        vec![Box::new(script_system), Box::new(render_system)],
+        clock.clone(),
+        Box::new(input_listener),
+    )
+}
+
 fn print_opengl_errors() {
     unsafe {
         loop {
@@ -209,22 +263,4 @@ fn print_opengl_errors() {
             eprintln!("OPENGL ERROR ({err})");
         }
     }
-}
-
-fn create_spotlight(shader_program: u32) -> gfx::Light {
-    let spotlight_color = vec3!(1.0, 1.0, 1.0);
-    //let spotlight_color = vec3!(1.0, 0.0, 0.0);
-    let spot_light = gfx::SpotLight {
-        shader: shader_program,
-        direction: Default::default(),
-        position: Default::default(),
-        inner_cutoff: math::radians(10.0).cos(),
-        outer_cutoff: math::radians(15.0).cos(),
-        material: gfx::Material {
-            ambient: &vec3!(0.2, 0.2, 0.2) * &spotlight_color,
-            diffuse: &vec3!(0.5, 0.5, 0.5) * &spotlight_color,
-            specular: &vec3!(1.0, 1.0, 1.0) * &spotlight_color,
-        },
-    };
-    gfx::Light::Spot(spot_light)
 }

@@ -6,6 +6,7 @@ use indexmap::{IndexMap, map::Entry};
 pub mod gfx;
 pub mod glfw_input;
 pub mod math;
+pub mod physics;
 pub mod scripts;
 pub use scripts::Script;
 

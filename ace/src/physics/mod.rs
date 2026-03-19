@@ -1,4 +1,4 @@
-use crate::{math, vec3};
+use crate::{math, vec3, vec4};
 
 #[cfg(test)]
 mod tests;
@@ -48,8 +48,8 @@ impl Collider {
         match simplex.len() {
             1 => simplex[0] == vec3!(0.0),
             2 => Self::intersects_line(simplex),
-            _ => Self::intersects_triangle(simplex),
-            //_ => Self::intersects_tetrahedron(simplex),
+            3 => Self::intersects_triangle(simplex),
+            _ => Self::intersects_tetrahedron(simplex),
         }
     }
 
@@ -76,7 +76,21 @@ impl Collider {
     }
 
     fn intersects_tetrahedron(polygon: &[math::Vec3]) -> bool {
-        todo!()
+        let triangle: math::Matrix4 = [
+            [polygon[0].x, polygon[1].x, polygon[2].x, polygon[3].x],
+            [polygon[0].y, polygon[1].y, polygon[2].y, polygon[3].y],
+            [polygon[0].z, polygon[1].z, polygon[2].z, polygon[3].z],
+            [1.0, 1.0, 1.0, 1.0],
+        ]
+        .into();
+        let origin = vec4!(0.0, 0.0, 0.0, 1.0);
+        let barycentric_coords = triangle.inverse() * origin;
+        f32_in_range(barycentric_coords.x, 0.0, 1.0)
+            && f32_in_range(barycentric_coords.y, 0.0, 1.0)
+            && f32_in_range(barycentric_coords.z, 0.0, 1.0)
+            && f32_in_range(barycentric_coords.w, 0.0, 1.0)
+            && barycentric_coords.w
+                == 1.0 - barycentric_coords.x - barycentric_coords.y - barycentric_coords.z
     }
 }
 

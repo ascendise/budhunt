@@ -1,7 +1,34 @@
 use crate::{physics::Collider, vec3};
 
 #[test]
-pub fn intersects_should_return_true_when_shapes_collide() {
+pub fn intersects_should_return_true_when_2d_planes_collide() {
+    // Arrange
+    let plane_horizontal = vec![
+        vec3!(1.0, 1.0, 0.0),
+        vec3!(1.0, -1.0, 0.0),
+        vec3!(-1.0, -1.0, 0.0),
+        vec3!(-1.0, 1.0, 0.0),
+    ];
+    let plane_horizontal = Collider {
+        vertices: plane_horizontal,
+    };
+    let plane_horizontal2 = vec![
+        vec3!(1.0, 1.0, 0.0),
+        vec3!(1.0, 0.0, 0.0),
+        vec3!(0.0, 0.0, 0.0),
+        vec3!(0.0, 1.0, 0.0),
+    ];
+    let plane_horizontal2 = Collider {
+        vertices: plane_horizontal2,
+    };
+    // Act
+    let intersects = plane_horizontal.intersects(&plane_horizontal2);
+    // Assert
+    assert!(intersects, "Collision between planes not detected!");
+}
+
+#[test]
+pub fn intersects_should_return_true_when_3d_planes_collide() {
     // Arrange
     let plane_horizontal = vec![
         vec3!(1.0, 0.0, 1.0),

@@ -1,8 +1,39 @@
-use crate::{math, vec3, vec4};
+use crate::{Components, Position, System, component, math, vec3, vec4};
 
 #[cfg(test)]
 mod tests;
 
+pub struct CollisionSystem;
+impl System for CollisionSystem {
+    fn run(&self, entities: &mut crate::Entities, _: &[crate::Input]) {
+        let colliders = entities.get_bucket(Components::COLLIDER);
+        let positions = entities.get_bucket(Components::POSITION);
+        //TODO: Replace with a sliding window that shrinks while moving?
+        // [[1,2,3,4,5]]
+        // [1,[2,3,4,5]]
+        // [1,2,[3,4,5]]
+        for (c, collider) in colliders.iter().enumerate().filter(|(_, c)| c.is_some()) {
+            let position = component!(&positions[c], Some(Components::Position)
+                or &Position::default());
+            let collider = component!(collider, Some(Components::Collider)).translate(position);
+            for (o, other) in colliders
+                .iter()
+                .enumerate()
+                .skip(c + 1)
+                .filter(|(_, c)| c.is_some())
+            {
+                let other_position = component!(&positions[o], Some(Components::Position)
+                    or &Position::default());
+                let other = component!(other, Some(Components::Collider)).translate(other_position);
+                if collider.intersects(&other) {
+                    println!("[{c}] Collision detected with {o}");
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Collider {
     vertices: Vec<math::Vec3>,
 }
@@ -13,6 +44,16 @@ impl Collider {
         vec3!(0.0, 0.0, 1.0),
         vec3!(-1.0, 0.0, 0.0),
     ];
+
+    pub fn new(vertices: Vec<math::Vec3>) -> Self {
+        Self { vertices }
+    }
+
+    fn translate(&self, position: &Position) -> Self {
+        let position = &position.position;
+        let vertices: Vec<math::Vec3> = self.vertices.iter().map(|v| v + position).collect();
+        Collider { vertices }
+    }
 
     pub fn intersects(&self, other: &Collider) -> bool {
         let initial_dir = &Self::SIMPLEX_DIRS[0];
@@ -54,10 +95,9 @@ impl Collider {
     }
 
     fn intersects_line(line: &[math::Vec3]) -> bool {
-        let origin = &vec3!(0.0);
         let point1 = &line[0];
         let point2 = &line[1];
-        (point1 - origin) + (point2 - origin) == point1 - point2
+        (-point1).cross(&(-point2)) == vec3!(0.0)
     }
 
     fn intersects_triangle(plane: &[math::Vec3]) -> bool {
@@ -76,7 +116,7 @@ impl Collider {
     }
 
     fn intersects_tetrahedron(polygon: &[math::Vec3]) -> bool {
-        let triangle: math::Matrix4 = [
+        let tetrahedron: math::Matrix4 = [
             [polygon[0].x, polygon[1].x, polygon[2].x, polygon[3].x],
             [polygon[0].y, polygon[1].y, polygon[2].y, polygon[3].y],
             [polygon[0].z, polygon[1].z, polygon[2].z, polygon[3].z],
@@ -84,7 +124,7 @@ impl Collider {
         ]
         .into();
         let origin = vec4!(0.0, 0.0, 0.0, 1.0);
-        let barycentric_coords = triangle.inverse() * origin;
+        let barycentric_coords = tetrahedron.inverse() * origin;
         f32_in_range(barycentric_coords.x, 0.0, 1.0)
             && f32_in_range(barycentric_coords.y, 0.0, 1.0)
             && f32_in_range(barycentric_coords.z, 0.0, 1.0)

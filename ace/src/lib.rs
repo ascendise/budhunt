@@ -175,6 +175,7 @@ pub enum Components {
     Light(gfx::Light),
     Scripts(Vec<Box<dyn scripts::Script>>),
     Player,
+    Collider(physics::Collider),
 }
 
 pub trait Component {

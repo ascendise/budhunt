@@ -1,16 +1,21 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::physics::CollisionEvent;
 
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Clone)]
 pub struct Events<T = Event> {
-    events: Mutex<Vec<T>>,
+    events: Arc<Mutex<Vec<T>>>,
 }
 impl Events {
-    pub fn empty<T>() -> Events<T> {
-        let events = Mutex::new(vec![]);
+    pub fn empty() -> Self {
+        Self::empty_custom()
+    }
+
+    pub fn empty_custom<T>() -> Events<T> {
+        let events = Arc::new(Mutex::new(vec![]));
         Events::<T> { events }
     }
 }

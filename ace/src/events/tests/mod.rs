@@ -10,7 +10,7 @@ enum TestEvent {
 #[test]
 pub fn push_event_should_add_single_event() {
     // Arrange
-    let sut = Events::empty::<TestEvent>();
+    let sut = Events::empty_custom::<TestEvent>();
     // Act
     sut.push_event(TestEvent::Hello);
     sut.push_event(TestEvent::Goodbye);
@@ -22,7 +22,7 @@ pub fn push_event_should_add_single_event() {
 #[test]
 pub fn push_events_should_add_events_in_bulk() {
     // Arrange
-    let sut = Events::empty::<TestEvent>();
+    let sut = Events::empty_custom::<TestEvent>();
     // Act
     let mut new_events = vec![TestEvent::Hello, TestEvent::Goodbye];
     sut.push_events(&mut new_events);

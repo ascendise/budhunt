@@ -3,6 +3,7 @@ use std::ops::{Index, IndexMut};
 
 use indexmap::{IndexMap, map::Entry};
 
+pub mod events;
 pub mod gfx;
 pub mod glfw_input;
 pub mod math;

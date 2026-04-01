@@ -8,10 +8,6 @@ impl System for CollisionSystem {
     fn run(&self, entities: &mut crate::Entities, _: &[crate::Input]) {
         let colliders = entities.get_bucket(Components::COLLIDER);
         let positions = entities.get_bucket(Components::POSITION);
-        //TODO: Replace with a sliding window that shrinks while moving?
-        // [[1,2,3,4,5]]
-        // [1,[2,3,4,5]]
-        // [1,2,[3,4,5]]
         for (c, collider) in colliders.iter().enumerate().filter(|(_, c)| c.is_some()) {
             let position = component!(&positions[c], Some(Components::Position)
                 or &Position::default());
@@ -137,3 +133,5 @@ impl Collider {
 fn f32_in_range(value: f32, min: f32, max: f32) -> bool {
     value >= min && value <= max
 }
+
+pub struct CollisionEvent(usize, usize);

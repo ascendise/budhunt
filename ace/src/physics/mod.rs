@@ -134,4 +134,5 @@ fn f32_in_range(value: f32, min: f32, max: f32) -> bool {
     value >= min && value <= max
 }
 
+#[derive(Clone)]
 pub struct CollisionEvent(usize, usize);

@@ -19,6 +19,11 @@ impl<T> Events<T> {
         let mut events = self.events.lock().unwrap();
         events.push(event);
     }
+
+    pub fn push_events(&self, new_events: &mut Vec<T>) {
+        let mut events = self.events.lock().unwrap();
+        events.append(new_events);
+    }
 }
 
 pub enum Event {

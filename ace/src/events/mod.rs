@@ -5,6 +5,23 @@ use crate::physics::CollisionEvent;
 #[cfg(test)]
 mod tests;
 
+/// Used to test events and get the inner value
+///
+/// # Usage
+///
+/// ```
+/// /// Test if an event is a specific variant
+/// use ace::event;
+/// #[derive(Debug, PartialEq, Eq)]
+/// enum MyEvents { A, B, C(usize), D(usize) }
+/// let event = MyEvents::A;
+/// assert_eq!(Some(MyEvents::A), event!(event, is MyEvents::A));
+/// assert_eq!(None, event!(event, is MyEvents::B));
+/// /// Test if an event is a specific variant and get it's inner value
+/// let event = MyEvents::C(42);
+/// assert_eq!(Some(42), event!(event, MyEvents::C));
+/// assert_eq!(None, event!(event, MyEvents::D));
+/// ```
 #[macro_export]
 macro_rules! event {
     ($v:expr, $e:path) => {

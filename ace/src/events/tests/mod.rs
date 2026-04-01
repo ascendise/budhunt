@@ -1,10 +1,11 @@
-use crate::events::Events;
+use crate::{event, events::Events};
 use pretty_assertions::assert_eq;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum TestEvent {
     Hello,
     Goodbye,
+    Value(usize),
 }
 
 #[test]
@@ -44,7 +45,7 @@ pub fn handle_events_should_pop_events_matching_predicate() {
     ];
     sut.push_events(&mut new_events);
     // Act
-    let matching = sut.handle_events(|e| matches!(e, TestEvent::Hello));
+    let matching = sut.handle_events(|e| event!(e, is TestEvent::Hello));
     // Assert
     assert_eq!(
         matching,
@@ -54,6 +55,29 @@ pub fn handle_events_should_pop_events_matching_predicate() {
     assert_eq!(
         *events,
         vec![TestEvent::Goodbye],
+        "handled events not removed!"
+    );
+}
+
+#[test]
+pub fn handle_events_should_allow_mapping_event_to_inner_value() {
+    // Arrange
+    let sut = Events::empty_custom::<TestEvent>();
+    let mut new_events = vec![
+        TestEvent::Hello,
+        TestEvent::Value(1),
+        TestEvent::Value(2),
+        TestEvent::Goodbye,
+    ];
+    sut.push_events(&mut new_events);
+    // Act
+    let matching = sut.handle_events(|e| event!(e, TestEvent::Value));
+    // Assert
+    assert_eq!(matching, vec![1, 2]);
+    let events = sut.events.lock().unwrap();
+    assert_eq!(
+        *events,
+        vec![TestEvent::Hello, TestEvent::Goodbye],
         "handled events not removed!"
     );
 }

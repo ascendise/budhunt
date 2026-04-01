@@ -5,6 +5,22 @@ use crate::physics::CollisionEvent;
 #[cfg(test)]
 mod tests;
 
+#[macro_export]
+macro_rules! event {
+    ($v:expr, $e:path) => {
+        match $v {
+            $e(v) => Some(v.clone()),
+            _ => None,
+        }
+    };
+    ($v:expr, is $e:path) => {
+        match $v {
+            $e => Some($e),
+            _ => None,
+        }
+    };
+}
+
 #[derive(Debug, Clone)]
 pub struct Events<E = Event> {
     events: Arc<Mutex<Vec<E>>>,
@@ -19,7 +35,7 @@ impl Events {
         Events::<E> { events }
     }
 }
-impl<E: Clone> Events<E> {
+impl<E> Events<E> {
     pub fn push_event(&self, event: E) {
         let mut events = self.events.lock().unwrap();
         events.push(event);
@@ -29,16 +45,13 @@ impl<E: Clone> Events<E> {
         let mut events = self.events.lock().unwrap();
         events.append(new_events);
     }
-    pub fn handle_events<F>(&self, mut predicate: F) -> Vec<E>
+    pub fn handle_events<F, T>(&self, mut predicate: F) -> Vec<T>
     where
-        F: FnMut(&&E) -> bool,
+        F: FnMut(&E) -> Option<T>,
     {
         let mut events = self.events.lock().unwrap();
-        let matching: Vec<E> = events
-            .iter()
-            .filter_map(|e| if predicate(&e) { Some(e.clone()) } else { None })
-            .collect();
-        events.retain(|e| !predicate(&e));
+        let matching = events.iter().filter_map(&mut predicate).collect();
+        events.retain(|e| predicate(e).is_none());
         matching
     }
 }

@@ -29,12 +29,12 @@ pub fn push_events_should_add_events_in_bulk() {
     sut.push_events(&mut new_events);
     // Assert
     let events = sut.events.lock().unwrap();
-    assert_eq!(*events, vec![TestEvent::Hello, TestEvent::Goodbye]);
-    assert_eq!(new_events, vec![]);
+    assert_eq!(vec![TestEvent::Hello, TestEvent::Goodbye], *events);
+    assert!(new_events.is_empty());
 }
 
 #[test]
-pub fn handle_events_should_pop_events_matching_predicate() {
+pub fn handle_events_should_return_events_matching_predicate() {
     // Arrange
     let sut = Events::empty_custom::<TestEvent>();
     let mut new_events = vec![
@@ -48,19 +48,13 @@ pub fn handle_events_should_pop_events_matching_predicate() {
     let matching = sut.handle_events(|e| event!(e, is TestEvent::Hello));
     // Assert
     assert_eq!(
+        vec![TestEvent::Hello, TestEvent::Hello, TestEvent::Hello],
         matching,
-        vec![TestEvent::Hello, TestEvent::Hello, TestEvent::Hello]
-    );
-    let events = sut.events.lock().unwrap();
-    assert_eq!(
-        *events,
-        vec![TestEvent::Goodbye],
-        "handled events not removed!"
     );
 }
 
 #[test]
-pub fn handle_events_should_allow_mapping_event_to_inner_value() {
+pub fn handle_events_should_allow_mapping_event_directly_to_inner_value() {
     // Arrange
     let sut = Events::empty_custom::<TestEvent>();
     let mut new_events = vec![
@@ -73,11 +67,5 @@ pub fn handle_events_should_allow_mapping_event_to_inner_value() {
     // Act
     let matching = sut.handle_events(|e| event!(e, TestEvent::Value));
     // Assert
-    assert_eq!(matching, vec![1, 2]);
-    let events = sut.events.lock().unwrap();
-    assert_eq!(
-        *events,
-        vec![TestEvent::Hello, TestEvent::Goodbye],
-        "handled events not removed!"
-    );
+    assert_eq!(vec![1, 2], matching);
 }

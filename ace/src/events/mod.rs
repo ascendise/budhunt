@@ -5,23 +5,28 @@ use crate::physics::CollisionEvent;
 #[cfg(test)]
 mod tests;
 
-/// Used to test events and get the inner value
-///
+/// Used to test events and get the inner value.
+/// Most useful for [Events::handle_events].
 /// # Usage
 ///
 /// ```
-/// /// Test if an event is a specific variant
 /// use ace::event;
+///
 /// #[derive(Debug, PartialEq, Eq)]
 /// enum MyEvents { A, B, C(usize), D(usize) }
+///
+/// // Test if an event is a specific variant
 /// let event = MyEvents::A;
 /// assert_eq!(Some(MyEvents::A), event!(event, is MyEvents::A));
 /// assert_eq!(None, event!(event, is MyEvents::B));
-/// /// Test if an event is a specific variant and get it's inner value
+///
+/// // Test if an event is a specific variant and get it's inner value
 /// let event = MyEvents::C(42);
 /// assert_eq!(Some(42), event!(event, MyEvents::C));
 /// assert_eq!(None, event!(event, MyEvents::D));
+///
 /// ```
+///
 #[macro_export]
 macro_rules! event {
     ($v:expr, $e:path) => {
@@ -66,10 +71,11 @@ impl<E> Events<E> {
     where
         F: FnMut(&E) -> Option<T>,
     {
-        let mut events = self.events.lock().unwrap();
-        let matching = events.iter().filter_map(&mut predicate).collect();
-        events.retain(|e| predicate(e).is_none());
-        matching
+        let events = self.events.lock().unwrap();
+        events.iter().filter_map(&mut predicate).collect()
+    }
+    pub fn flush(&self) {
+        self.events.lock().unwrap().clear();
     }
 }
 
@@ -77,3 +83,7 @@ impl<E> Events<E> {
 pub enum Event {
     Collision(CollisionEvent),
 }
+
+//TODO: Handle events
+// Create an Event::Input and change system signature to
+// `fn run(&self, entities: &mut Entities, events: &Events);` (?)

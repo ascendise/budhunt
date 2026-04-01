@@ -15,6 +15,35 @@ pub use scripts::Script;
 mod tests;
 
 #[macro_export]
+/// Used to quickly map a Component enum variant to it's inner value
+///
+/// # Usage
+/// ```ignore (for some reason the derive macro is not working inside docs)
+/// use ace::component;
+/// // used for implementing custom components
+/// use ace_proc_macros::Component;
+/// use ace::Component;
+///
+/// #[derive(Component, PartialEq, Clone, Debug)]
+/// enum MyComponents { A(usize), B(f32), C}
+///
+/// // Map component to known type
+/// let comp: MyComponents = MyComponents::A(42);
+/// let value: usize = component!(comp, MyComponents::A);
+/// assert_eq!(42, value);
+///
+/// // Map option to known type
+/// let comp = Some(MyComponents::A(42));
+/// let value: usize = component!(comp, Some(MyComponents::A));
+/// assert_eq!(42, value);
+///
+/// // Map option to known type or return default
+/// let comp = None;
+/// let value: usize = component!(comp, Some(MyComponents::A) or 42);
+/// assert_eq!(42, value);
+/// ```
+/// # Panics
+/// If you assume the wrong component variant, the macro will panic
 macro_rules! component {
     ($v:expr, Some($e:path)) => {
         match $v {

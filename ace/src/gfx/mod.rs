@@ -46,9 +46,10 @@ impl RenderSystem {
     }
 }
 impl System for RenderSystem {
-    fn run(&self, entities: &mut Entities, inputs: &[Input]) {
+    fn run(&self, entities: &mut Entities, events: &Events) {
         let mut projection = self.projection.lock().unwrap();
-        Self::handle_inputs(inputs, &mut projection);
+        let inputs = events.handle_events(|e| event!(e, Event::Input));
+        Self::handle_inputs(&inputs, &mut projection);
         let camera = Self::find_camera(entities);
         let models = entities.get_bucket(Components::MODEL);
         let positions = entities.get_bucket(Components::POSITION);

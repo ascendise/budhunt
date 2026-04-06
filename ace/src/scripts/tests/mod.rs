@@ -16,7 +16,7 @@ impl SpyScript {
     }
 }
 impl Script for SpyScript {
-    fn run(&self, _: &[&Components], _: &[Input]) -> Vec<Components> {
+    fn run(&self, _: &[&Components], _: &Events) -> Vec<Components> {
         let mut count = self.run_count.lock().unwrap();
         *count += 1;
         vec![]

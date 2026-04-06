@@ -161,17 +161,6 @@ pub fn magnitude_should_return_length_of_vector(vec: Vec4, expected: f32) {
     assert_float_eq!(expected, result);
 }
 
-#[test]
-pub fn negate_should_negate_all_elements_of_vector() {
-    // Arrange
-    let vec = Vec4::new(1.0, 2.0, 3.0, 4.0);
-    // Act
-    let result = vec.negate();
-    // Assert
-    let expected = Vec4::new(-1.0, -2.0, -3.0, -4.0);
-    assert_float_eq!(Vec4 expected, result);
-}
-
 #[test_case(Vec4::new(1.0, 1.0, 1.0, 1.0), Vec4::new(0.5, 0.5, 0.5, 0.5))]
 #[test_case(Vec4::new(2.0, 4.0, 1.0, 3.0), Vec4::new((2.0f32/15.0f32).sqrt(), 2.0 * (2.0f32/15.0f32).sqrt(), 1.0/30.0f32.sqrt(), (3.0f32/10.0f32).sqrt()))]
 #[test_case(Vec4::new(-1.5, 2.0, -2.0, 0.0), Vec4::new(-0.46852127f32, 0.62469506f32, -0.62469506, 0.0))]

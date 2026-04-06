@@ -18,7 +18,7 @@ pub fn run_should_run_scripts_on_entity() {
     ]);
     entities.create_entity(vec![scripts]);
     // Act
-    sut.run(&mut entities, &[]);
+    sut.run(&mut entities, &Events::empty());
     // Assert
     assert_eq!(3, *spy_script.run_count.lock().unwrap());
 }
@@ -34,7 +34,7 @@ pub fn run_should_run_script_on_all_entities() {
     entities.create_entity(vec![Components::Position(Default::default())]); // Filler
     entities.create_entity(vec![Components::Scripts(vec![spy_script.clone()])]);
     // Act
-    sut.run(&mut entities, &[]);
+    sut.run(&mut entities, &Events::empty());
     // Assert
     assert_eq!(3, *spy_script.run_count.lock().unwrap());
 }
@@ -47,7 +47,7 @@ pub fn run_should_update_entity_with_returned_entity() {
     let mut entities = Entities::empty();
     entities.create_entity(vec![Components::Scripts(vec![add_position_script.clone()])]);
     // Act
-    sut.run(&mut entities, &[]);
+    sut.run(&mut entities, &Events::empty());
     // Assert
     let entity = entities.get_entity(0);
     let expected_position = Position {
@@ -84,7 +84,7 @@ pub fn run_should_update_existing_component_with_returned_entity() {
         Components::Position(old_position),
     ]);
     // Act
-    sut.run(&mut entities, &[]);
+    sut.run(&mut entities, &Events::empty());
     // Assert
     let entity = entities.get_entity(0);
     let expected_position = Position {
@@ -109,7 +109,7 @@ pub fn run_should_update_existing_component_with_returned_entity() {
 #[derive(Clone)]
 pub struct AddPositionScript;
 impl Script for AddPositionScript {
-    fn run(&self, _: &[&Components], _: &[Input]) -> Vec<Components> {
+    fn run(&self, _: &[&Components], _: &Events) -> Vec<Components> {
         let position = Position {
             position: vec3!(10.0),
             direction: Default::default(),

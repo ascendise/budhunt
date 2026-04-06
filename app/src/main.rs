@@ -16,6 +16,20 @@ mod scripts;
 static VERTEX_SHADER_SOURCE: &str = include_str!("../shaders/object.vs.glsl");
 static FRAGMENT_SHADER_SOURCE: &str = include_str!("../shaders/object.fs.glsl");
 
+fn box_collider(width: f32, height: f32, depth: f32) -> ace::physics::Collider {
+    let vertices = vec![
+        vec3!(-width, -height, depth),
+        vec3!(width, -height, depth),
+        vec3!(width, -height, -depth),
+        vec3!(-width, -height, -depth),
+        vec3!(-width, height, -depth),
+        vec3!(-width, height, depth),
+        vec3!(width, height, depth),
+        vec3!(width, height, -depth),
+    ];
+    ace::physics::Collider::new(vertices)
+}
+
 fn main() {
     let mut glfw = glfw::init(glfw::fail_on_errors).unwrap();
     let window = setup_window(&mut glfw);
@@ -25,11 +39,12 @@ fn main() {
         .expect("Failed to compile model shader");
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
+    let collider = box_collider(0.5, 2.0, 0.5);
+    spawn_player(&mut entities, shader_program, clock.clone(), collider);
     spawn_monkeys(&mut renderer, shader_program, &mut entities);
     spawn_point_lights(&mut renderer, shader_program, &mut entities);
     spawn_sun(shader_program, &mut entities);
     spawn_floor(&mut renderer, shader_program, &mut entities);
-    spawn_player(&mut entities, shader_program, clock.clone());
     let window = Arc::new(Mutex::new(window));
     let mut world = setup_world(renderer, entities, clock, &window);
     print_opengl_errors();
@@ -81,7 +96,7 @@ fn spawn_monkeys(
     renderer: &mut gfx::opengl::OpenGlRenderer,
     shader_program: u32,
     entities: &mut ace::Entities,
-) {
+) -> ace::physics::Collider {
     let specular_map = load_image(Path::new("./app/models/suzanne_specular.png"));
     let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/suzanne.glb"), &specular_map);
     let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
@@ -97,14 +112,25 @@ fn spawn_monkeys(
         vec3!(1.5, 0.2, -1.5),
         vec3!(-1.3, 1.0, -1.5),
     ];
+    // TODO: Kinda overkill mesh for collider, additional model (embedded inside same file)
+    // for collider?
+    let collider = monkey_mesh
+        .vertices
+        .iter()
+        .map(|v| v.position.clone())
+        .collect();
+    let collider = ace::physics::Collider::new(collider);
     for monkey in monkeys {
         let model = monkey_model.clone();
         let position = ace::Components::Position(ace::Position {
-            position: monkey,
+            position: monkey.clone(),
             direction: Default::default(),
         });
-        entities.create_entity(vec![ace::Components::Model(model), position]);
+        let collider = ace::Components::Collider(collider.clone());
+        let components = vec![ace::Components::Model(model), position, collider];
+        entities.create_entity(components);
     }
+    collider
 }
 
 fn spawn_point_lights(
@@ -205,13 +231,18 @@ fn spawn_player(
     entities: &mut ace::Entities,
     shader_program: u32,
     clock: Box<ace::glfw_input::GlfwClock>,
+    collider: ace::physics::Collider,
 ) {
     let flashlight = create_spotlight(shader_program);
     entities.create_entity(vec![
         ace::Components::Light(flashlight),
-        ace::Components::Position(Default::default()),
+        ace::Components::Position(ace::Position {
+            position: vec3!(0.0, 0.0, -100.0),
+            direction: Default::default(),
+        }),
         ace::Components::Scripts(vec![Box::new(MovementScript::new(clock))]),
         ace::Components::Player,
+        ace::Components::Collider(collider),
     ]);
 }
 
@@ -242,12 +273,13 @@ fn setup_world(
         near: 0.1,
         far: 1000.0,
     };
-    let render_system = ace::gfx::RenderSystem::new(Box::new(renderer), projection);
-    let script_system = ace::scripts::ScriptSystem;
+    let render_system = Box::new(ace::gfx::RenderSystem::new(Box::new(renderer), projection));
+    let script_system = Box::new(ace::scripts::ScriptSystem);
+    let collision_system = Box::new(ace::physics::CollisionSystem);
     let input_listener = ace::glfw_input::GlfwInputListener::init(window.clone());
     ace::World::init(
         entities,
-        vec![Box::new(script_system), Box::new(render_system)],
+        vec![render_system, collision_system, script_system],
         clock.clone(),
         Box::new(input_listener),
     )

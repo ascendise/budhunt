@@ -52,7 +52,7 @@ pub fn render_should_pass_objects_to_renderer() {
     let expected_light = Light::Directional(expected_light);
     entities.create_entity(vec![Components::Light(expected_light.clone())]);
     // Act
-    sut.run(&mut entities, &[]);
+    sut.run(&mut entities, &Events::empty());
     // Assert
     let frame = spy.frame(0);
     assert_eq!(vec![expected_model], frame.models);
@@ -94,7 +94,7 @@ pub fn render_should_transform_models_with_position() {
         Components::Position(position),
     ]);
     // Act
-    sut.run(&mut entities, &[]);
+    sut.run(&mut entities, &Events::empty());
     // Assert
     let frame = spy.frame(0);
     let model = frame.models.first().expect("Model was not rendered!");
@@ -112,8 +112,10 @@ pub fn render_should_change_fov_on_scroll(scroll: Input, expected_fov: f32) {
         Components::Player,
         Components::Position(Default::default()),
     ]);
+    let events = Events::empty();
+    events.push_event(Event::Input(scroll));
     // Act
-    sut.run(&mut entities, &[scroll]);
+    sut.run(&mut entities, &events);
     // Assert
     let frame = spy.frame(0);
     assert_eq!(expected_fov, frame.projection.fov);
@@ -131,8 +133,10 @@ pub fn render_should_clamp_fov_range(scroll: Input, expected_fov: f32) {
         Components::Position(Default::default()),
     ]);
     // Act
-    let inputs: Vec<Input> = (0..100).map(|_| scroll.clone()).collect();
-    sut.run(&mut entities, &inputs);
+    let mut inputs: Vec<Event> = (0..100).map(|_| Event::Input(scroll.clone())).collect();
+    let events = Events::empty();
+    events.push_events(&mut inputs);
+    sut.run(&mut entities, &events);
     // Assert
     let frame = spy.frame(0);
     assert_eq!(expected_fov, frame.projection.fov);

@@ -17,7 +17,10 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v3
       - name: Install dependencies
-        run: apt-get update && apt-get -y install libwayland-dev libxkbcommon-dev xorg-dev libgl-dev libx11-dev libxkbfile-dev libglx-dev libinput-dev libegl-dev
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+        with:
+          packages: libwayland-dev libxkbcommon-dev xorg-dev libgl-dev libx11-dev libxkbfile-dev libglx-dev libinput-dev libegl-dev
+          version: 1.0
       - name: Run cargo test
         run: cargo test 
   cargo-clippy:
@@ -31,7 +34,10 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v3
       - name: Install dependencies 
-        run: apt-get update && apt-get -y install libwayland-dev libxkbcommon-dev xorg-dev libgl-dev libx11-dev libxkbfile-dev libglx-dev libinput-dev libegl-dev
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.0
+        with:
+          packages: libwayland-dev libxkbcommon-dev xorg-dev libgl-dev libx11-dev libxkbfile-dev libglx-dev libinput-dev libegl-dev
+          version: 1.0
       - name: Run cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
   cargo-fmt:

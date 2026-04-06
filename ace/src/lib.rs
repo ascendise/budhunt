@@ -3,16 +3,50 @@ use std::ops::{Index, IndexMut};
 
 use indexmap::{IndexMap, map::Entry};
 
+pub mod events;
+pub use events::Events;
 pub mod gfx;
 pub mod glfw_input;
 pub mod math;
+pub mod physics;
 pub mod scripts;
 pub use scripts::Script;
+
+use crate::physics::CollisionEvent;
 
 #[cfg(test)]
 mod tests;
 
 #[macro_export]
+/// Used to quickly map a Component enum variant to it's inner value
+///
+/// # Usage
+/// ```
+/// use ace::component;
+/// // used for implementing custom components
+/// use ace_proc_macros::Component;
+/// use ace::Component;
+///
+/// #[derive(Component, PartialEq, Clone, Debug)]
+/// enum MyComponents { CompA(usize), CompB(f32), CompC}
+///
+/// // Map component to known type
+/// let comp: MyComponents = MyComponents::CompA(42);
+/// let value: usize = component!(comp, MyComponents::CompA);
+/// assert_eq!(42, value);
+///
+/// // Map option to known type
+/// let comp = Some(MyComponents::CompA(42));
+/// let value: usize = component!(comp, Some(MyComponents::CompA));
+/// assert_eq!(42, value);
+///
+/// // Map option to known type or return default
+/// let comp = None;
+/// let value: usize = component!(comp, Some(MyComponents::CompA) or 42);
+/// assert_eq!(42, value);
+/// ```
+/// # Panics
+/// If you assume the wrong component variant, the macro will panic
 macro_rules! component {
     ($v:expr, Some($e:path)) => {
         match $v {
@@ -57,9 +91,13 @@ impl World {
 
     pub fn run_frame(&mut self) {
         self.clock.stop_frame_time();
+        let events = Events::empty();
         let inputs = self.input_listener.get_inputs();
+        for input in inputs {
+            events.push_event(Event::Input(input));
+        }
         for system in &self.systems {
-            system.run(&mut self.entities, &inputs)
+            system.run(&mut self.entities, &events)
         }
     }
 }
@@ -174,6 +212,7 @@ pub enum Components {
     Light(gfx::Light),
     Scripts(Vec<Box<dyn scripts::Script>>),
     Player,
+    Collider(physics::Collider),
 }
 
 pub trait Component {
@@ -185,7 +224,7 @@ pub trait Component {
 }
 
 pub trait System {
-    fn run(&self, entities: &mut Entities, inputs: &[Input]);
+    fn run(&self, entities: &mut Entities, events: &Events);
 }
 
 pub trait Clock {
@@ -216,4 +255,10 @@ pub enum Input {
     MoveCursor(math::Vec2),
     /// y offset
     Scroll(f32),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Event {
+    Input(Input),
+    Collision(CollisionEvent),
 }

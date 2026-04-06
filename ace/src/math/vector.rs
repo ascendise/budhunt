@@ -1,4 +1,6 @@
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
+
+use crate::{vec2, vec3, vec4};
 
 #[derive(Default, Debug, PartialEq, Clone)]
 pub struct Vec2 {
@@ -6,8 +8,22 @@ pub struct Vec2 {
     pub y: f32,
 }
 impl Vec2 {
-    pub fn new(x: f32, y: f32) -> Self {
+    pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
+    }
+}
+impl Neg for Vec2 {
+    type Output = Vec2;
+
+    fn neg(self) -> Self::Output {
+        vec2!(-self.x, -self.y)
+    }
+}
+impl Neg for &Vec2 {
+    type Output = Vec2;
+
+    fn neg(self) -> Self::Output {
+        -self.clone()
     }
 }
 
@@ -18,7 +34,7 @@ pub struct Vec3 {
     pub z: f32,
 }
 impl Vec3 {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
+    pub const fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
 
@@ -46,6 +62,20 @@ impl Vec3 {
     pub fn magnitude(&self) -> f32 {
         let sum = self.x.powi(2) + self.y.powi(2) + self.z.powi(2);
         sum.sqrt()
+    }
+}
+impl Neg for Vec3 {
+    type Output = Vec3;
+
+    fn neg(self) -> Self::Output {
+        vec3!(-self.x, -self.y, -self.z)
+    }
+}
+impl Neg for &Vec3 {
+    type Output = Vec3;
+
+    fn neg(self) -> Self::Output {
+        -self.clone()
     }
 }
 impl Add for &Vec3 {
@@ -187,9 +217,8 @@ pub struct Vec4 {
     pub z: f32,
     pub w: f32,
 }
-
 impl Vec4 {
-    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
+    pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self { x, y, z, w }
     }
 
@@ -202,10 +231,6 @@ impl Vec4 {
         (self.x * rhs.x) + (self.y * rhs.y) + (self.z * rhs.z) + (self.w * rhs.w)
     }
 
-    pub fn negate(&self) -> Vec4 {
-        self * -1.0
-    }
-
     pub fn normalize(&self) -> Vec4 {
         let magnitude = self.magnitude();
         Vec4 {
@@ -214,6 +239,20 @@ impl Vec4 {
             z: self.z / magnitude,
             w: self.w / magnitude,
         }
+    }
+}
+impl Neg for Vec4 {
+    type Output = Vec4;
+
+    fn neg(self) -> Self::Output {
+        vec4!(-self.x, -self.y, -self.z, -self.w)
+    }
+}
+impl Neg for &Vec4 {
+    type Output = Vec4;
+
+    fn neg(self) -> Self::Output {
+        -self.clone()
     }
 }
 impl Add for &Vec4 {

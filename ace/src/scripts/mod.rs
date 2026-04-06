@@ -12,9 +12,9 @@ macro_rules! script {
             fn run(
                 &self,
                 entity: &[&$crate::Components],
-                inputs: &[$crate::Input],
+                events: &$crate::Events,
             ) -> Vec<$crate::Components> {
-                $script(entity, inputs)
+                $script(entity, events)
             }
         }
         QuickScript
@@ -24,14 +24,14 @@ macro_rules! script {
 pub struct ScriptSystem;
 impl ScriptSystem {}
 impl System for ScriptSystem {
-    fn run(&self, entities: &mut Entities, inputs: &[Input]) {
+    fn run(&self, entities: &mut Entities, events: &Events) {
         let scripted_entities = entities.get_entities(Components::SCRIPTS);
         let mut updates: Vec<(usize, Vec<Components>)> = vec![];
         for (e, entity) in scripted_entities {
             let scripts = entity.iter().find(|e| matches!(e, Components::Scripts(_)));
             if let Some(Components::Scripts(scripts)) = scripts {
                 for script in scripts {
-                    let updated_components = script.run(&entity, inputs);
+                    let updated_components = script.run(&entity, events);
                     updates.push((e, updated_components));
                 }
             }
@@ -45,5 +45,5 @@ impl System for ScriptSystem {
 }
 
 pub trait Script<T: Component = Components> {
-    fn run(&self, entity: &[&T], inputs: &[Input]) -> Vec<T>;
+    fn run(&self, entity: &[&T], events: &Events) -> Vec<T>;
 }

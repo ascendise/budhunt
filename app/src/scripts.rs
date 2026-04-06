@@ -1,4 +1,4 @@
-use ace::{component, math, vec2, vec3};
+use ace::{component, event, math, vec2, vec3};
 #[cfg(test)]
 mod tests;
 
@@ -6,19 +6,23 @@ pub struct MovementScript {
     clock: Box<dyn ace::Clock>,
 }
 impl ace::Script for MovementScript {
-    fn run(&self, player: &[&ace::Components], inputs: &[ace::Input]) -> Vec<ace::Components> {
+    fn run(&self, player: &[&ace::Components], events: &ace::Events) -> Vec<ace::Components> {
         let camera = player
             .iter()
             .find(|c| matches!(c, ace::Components::Position(_)))
             .expect("No camera position found");
         let mut camera = component!(camera, ace::Components::Position).clone();
+        let inputs = events.handle_events(|e| event!(e, ace::Event::Input));
         let cursor_offset = inputs
             .iter()
             .find(|i| matches!(i, ace::Input::MoveCursor(_)))
             .map(|i| component!(i, ace::Input::MoveCursor).clone())
             .unwrap_or(vec2!(0.0));
         let move_dir = self.turn_camera(&mut camera, &cursor_offset);
-        self.move_camera(&mut camera, inputs, &move_dir);
+        self.move_camera(&mut camera, &inputs, &move_dir);
+        for event in events.handle_events(|e| event!(e, ace::Event::Collision)) {
+            println!("Collision detected: {} and {}", event.0, event.1)
+        }
         vec![ace::Components::Position(camera)]
     }
 }

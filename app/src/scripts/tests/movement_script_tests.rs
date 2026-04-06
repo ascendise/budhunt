@@ -25,7 +25,11 @@ pub fn run_should_move_player_on_matching_input(input: Input, expected_position:
     let camera = Components::Position(camera);
     let entity = vec![&camera];
     // Act
-    let updated_components = sut.run(&entity, &[input, Input::MoveCursor(vec2!(90.0, 0.0))]);
+    let events = Events::empty();
+    let move_cursor = Input::MoveCursor(vec2!(90.0, 0.0));
+    events.push_event(Event::Input(move_cursor));
+    events.push_event(Event::Input(input));
+    let updated_components = sut.run(&entity, &events);
     // Assert
     let camera = component!(&updated_components[0], Components::Position);
     assert_float_eq!(Vec3 expected_position, camera.position)
@@ -49,7 +53,10 @@ pub fn run_should_turn_camera_on_matching_input(
     let camera = Components::Position(camera);
     let entity = vec![&camera];
     // Act
-    let updated_components = sut.run(&entity, &[Input::MoveCursor(cursor_offset)]);
+    let move_cursor = Input::MoveCursor(cursor_offset);
+    let events = Events::empty();
+    events.push_event(Event::Input(move_cursor));
+    let updated_components = sut.run(&entity, &events);
     // Assert
     let camera = component!(&updated_components[0], Components::Position);
     assert_float_eq!(Vec3 expected_camera_direction, camera.direction);

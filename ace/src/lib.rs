@@ -68,6 +68,40 @@ macro_rules! component {
     };
 }
 
+#[macro_export]
+/// Transforms an [Option<Component>] into an [Option<T>]. If the component does not match,
+/// [maybe_component] returns [None]
+///
+/// # Usage
+/// ```
+/// use ace::maybe_component;
+/// // used for implementing custom components
+/// use ace_proc_macros::Component;
+/// use ace::Component;
+///
+/// #[derive(Component, PartialEq, Clone, Debug)]
+/// enum MyComponents { CompA(usize), CompB(f32), CompC}
+///
+/// // Map component with matching type
+/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
+/// let value: Option<usize> = maybe_component!(comp, MyComponents::CompA);
+/// assert_eq!(Some(42), value);
+///
+/// // Map component with mismatching type
+/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
+/// let value: Option<f32> = maybe_component!(comp, MyComponents::CompB);
+/// assert_eq!(None, value);
+/// ```
+///
+macro_rules! maybe_component {
+    ($v:expr, $e:path) => {
+        match $v {
+            Some($e(v)) => Some(v),
+            _ => None,
+        }
+    };
+}
+
 pub struct World {
     entities: Entities,
     systems: Vec<Box<dyn System>>,
@@ -106,7 +140,7 @@ impl World {
 pub struct Entities<T: Component = Components, const E: usize = 255> {
     components: IndexMap<u32, [Option<T>; E]>,
     empty_bucket: [Option<T>; E],
-    entities: usize,
+    entities_count: usize,
     register: [u32; E],
 }
 impl Entities {
@@ -120,37 +154,46 @@ impl Entities {
         Entities::<T, E> {
             components,
             empty_bucket,
-            entities: 0,
+            entities_count: 0,
             register: [0u32; E],
         }
     }
 }
 impl<T: Component, const E: usize> Entities<T, E> {
     pub fn count(&self) -> usize {
-        self.entities
+        self.entities_count
     }
 
     pub fn create_entity(&mut self, entity: Vec<T>) -> usize {
-        let idx = self.entities;
-        self.entities = idx + 1;
+        let entity_id = self.entities_count;
+        self.entities_count = entity_id + 1;
         for component in entity {
-            self.update_entity(idx, component);
+            self.update_entity(entity_id, component);
         }
-        idx
+        entity_id
     }
 
-    pub fn get_entity(&self, idx: usize) -> Vec<&T> {
-        self.components.iter().flat_map(|(_, b)| &b[idx]).collect()
+    pub fn get_entity(&self, entity_id: usize) -> Vec<&T> {
+        self.components
+            .iter()
+            .flat_map(|(_, b)| &b[entity_id])
+            .collect()
     }
 
-    pub fn update_entity(&mut self, idx: usize, value: T) {
-        let type_id = value.get_type();
-        self.register[idx] |= type_id;
-        if value.is_marker() {
+    pub fn update_entity(&mut self, entity_id: usize, component: T) {
+        let type_id = component.get_type();
+        self.register[entity_id] |= type_id;
+        if component.is_marker() {
             return;
         }
         let bucket = self.get_or_create_bucket(type_id);
-        bucket[idx] = Some(value);
+        bucket[entity_id] = Some(component);
+    }
+
+    pub fn update_entity_batch(&mut self, entity_id: usize, components: Vec<T>) {
+        for component in components {
+            self.update_entity(entity_id, component);
+        }
     }
 
     fn get_or_create_bucket(&mut self, type_id: u32) -> &mut [Option<T>] {
@@ -171,13 +214,13 @@ impl<T: Component, const E: usize> Entities<T, E> {
             .components
             .get(&component_type)
             .unwrap_or(&self.empty_bucket);
-        &bucket[0..self.entities]
+        &bucket[0..self.entities_count]
     }
 
     /// Takes a set of bitflags OR'd together and returns filtered (only specified components) entities.
     fn get_entities(&self, components: u32) -> Vec<(usize, Vec<&T>)> {
         let mut entities = vec![];
-        for e in 0..self.entities {
+        for e in 0..self.entities_count {
             let entity = self.register[e];
             if entity & components >= components {
                 let entity = self.get_entity(e);
@@ -213,6 +256,7 @@ pub enum Components {
     Scripts(Vec<Box<dyn scripts::Script>>),
     Player,
     Collider(physics::Collider),
+    RigidBody(physics::RigidBody),
 }
 
 pub trait Component {
@@ -234,6 +278,7 @@ pub trait Clock {
     fn stop_frame_time(&self);
 }
 
+// Split component into Position and Direction as Direction is really only needed for rendering
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Position {
     pub position: math::Vec3,

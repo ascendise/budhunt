@@ -14,7 +14,10 @@ fn setup(clock: Box<dyn Clock>) -> MovementScript {
 #[test_case(Input::Backwards, vec3!(0.0, 0.0, -1.0))]
 #[test_case(Input::Left, vec3!(-1.0, 0.0, 0.0))]
 #[test_case(Input::Right, vec3!(1.0, 0.0, 0.0))]
-pub fn run_should_move_player_on_matching_input(input: Input, expected_position: math::Vec3) {
+pub fn run_should_change_player_velocity_on_matching_input(
+    input: Input,
+    expected_position: math::Vec3,
+) {
     // Arrange
     let clock = Box::new(StubClock { fixed_delta: 0.1 });
     let sut = setup(clock);
@@ -23,7 +26,8 @@ pub fn run_should_move_player_on_matching_input(input: Input, expected_position:
         direction: vec3!(0.0, 0.0, 1.0),
     };
     let camera = Components::Position(camera);
-    let entity = vec![&camera];
+    let rigid_body = Components::RigidBody(Default::default());
+    let entity = vec![&camera, &rigid_body];
     // Act
     let events = Events::empty();
     let move_cursor = Input::MoveCursor(vec2!(90.0, 0.0));
@@ -31,8 +35,8 @@ pub fn run_should_move_player_on_matching_input(input: Input, expected_position:
     events.push_event(Event::Input(input));
     let updated_components = sut.run(&entity, &events);
     // Assert
-    let camera = component!(&updated_components[0], Components::Position);
-    assert_float_eq!(Vec3 expected_position, camera.position)
+    let rigid_body = component!(&updated_components[1], Components::RigidBody);
+    assert_float_eq!(Vec3 & expected_position, rigid_body.velocity().unwrap())
 }
 
 #[test_case(vec2!(90.0, 0.0), vec3!(0.0, 0.0, 1.0).normalize() ; "look forward")]
@@ -51,7 +55,8 @@ pub fn run_should_turn_camera_on_matching_input(
         direction: vec3!(0.0, 0.0, 1.0),
     };
     let camera = Components::Position(camera);
-    let entity = vec![&camera];
+    let rigid_body = Components::RigidBody(Default::default());
+    let entity = vec![&camera, &rigid_body];
     // Act
     let move_cursor = Input::MoveCursor(cursor_offset);
     let events = Events::empty();

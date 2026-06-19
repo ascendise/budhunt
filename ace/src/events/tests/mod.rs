@@ -34,7 +34,7 @@ pub fn push_events_should_add_events_in_bulk() {
 }
 
 #[test]
-pub fn handle_events_should_return_events_matching_predicate() {
+pub fn get_events_should_return_events_matching_predicate() {
     // Arrange
     let sut = Events::empty_custom::<TestEvent>();
     let mut new_events = vec![
@@ -45,7 +45,7 @@ pub fn handle_events_should_return_events_matching_predicate() {
     ];
     sut.push_events(&mut new_events);
     // Act
-    let matching = sut.handle_events(|e| event!(e, is TestEvent::Hello));
+    let matching = sut.get_events(|e| event!(e, is TestEvent::Hello));
     // Assert
     assert_eq!(
         vec![TestEvent::Hello, TestEvent::Hello, TestEvent::Hello],
@@ -54,7 +54,7 @@ pub fn handle_events_should_return_events_matching_predicate() {
 }
 
 #[test]
-pub fn handle_events_should_allow_mapping_event_directly_to_inner_value() {
+pub fn get_events_should_allow_mapping_event_directly_to_inner_value() {
     // Arrange
     let sut = Events::empty_custom::<TestEvent>();
     let mut new_events = vec![
@@ -65,7 +65,7 @@ pub fn handle_events_should_allow_mapping_event_directly_to_inner_value() {
     ];
     sut.push_events(&mut new_events);
     // Act
-    let matching = sut.handle_events(|e| event!(e, TestEvent::Value));
+    let matching = sut.get_events(|e| event!(e, TestEvent::Value));
     // Assert
     assert_eq!(vec![1, 2], matching);
 }

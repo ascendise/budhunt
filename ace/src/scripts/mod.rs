@@ -36,10 +36,8 @@ impl System for ScriptSystem {
                 }
             }
         }
-        for (e, update) in updates {
-            for component in update {
-                entities.update_entity(e, component);
-            }
+        for (e, updated_components) in updates {
+            entities.update_entity_batch(e, updated_components);
         }
     }
 }

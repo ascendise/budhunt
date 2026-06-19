@@ -112,8 +112,6 @@ fn spawn_monkeys(
         vec3!(1.5, 0.2, -1.5),
         vec3!(-1.3, 1.0, -1.5),
     ];
-    // TODO: Kinda overkill mesh for collider, additional model (embedded inside same file)
-    // for collider?
     let collider = monkey_mesh
         .vertices
         .iter()
@@ -243,6 +241,7 @@ fn spawn_player(
         ace::Components::Scripts(vec![Box::new(MovementScript::new(clock))]),
         ace::Components::Player,
         ace::Components::Collider(collider),
+        ace::Components::RigidBody(ace::physics::RigidBody::new(vec3!(0.0))),
     ]);
 }
 
@@ -275,11 +274,13 @@ fn setup_world(
     };
     let render_system = Box::new(ace::gfx::RenderSystem::new(Box::new(renderer), projection));
     let script_system = Box::new(ace::scripts::ScriptSystem);
-    let collision_system = Box::new(ace::physics::CollisionSystem);
+    let physics_system = Box::new(ace::physics::PhysicsSystem::new(Some(
+        ace::physics::CollisionSystem,
+    )));
     let input_listener = ace::glfw_input::GlfwInputListener::init(window.clone());
     ace::World::init(
         entities,
-        vec![render_system, collision_system, script_system],
+        vec![render_system, script_system, physics_system],
         clock.clone(),
         Box::new(input_listener),
     )

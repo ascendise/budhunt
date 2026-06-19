@@ -6,7 +6,7 @@ use crate::Event;
 mod tests;
 
 /// Used to test events and get the inner value.
-/// Most useful for [Events::handle_events].
+/// Most useful for [Events::get_events].
 /// # Usage
 ///
 /// ```
@@ -57,7 +57,10 @@ impl Events {
         Events::<E> { events }
     }
 }
-impl<E> Events<E> {
+impl<E> Events<E>
+where
+    E: Clone,
+{
     pub fn push_event(&self, event: E) {
         let mut events = self.events.lock().unwrap();
         events.push(event);
@@ -67,11 +70,27 @@ impl<E> Events<E> {
         let mut events = self.events.lock().unwrap();
         events.append(new_events);
     }
-    pub fn handle_events<F, T>(&self, mut predicate: F) -> Vec<T>
+
+    /// Used to get filtered list of events
+    ///
+    /// # Example for getting all events of a specific type
+    /// ```
+    /// use ace::event;
+    /// use ace::Events;
+    /// let events = Events::empty();
+    /// let inputs = events.get_events(|e| event!(e, ace::Event::Input));
+    /// ```
+    ///
+    pub fn get_events<F, T>(&self, mut predicate: F) -> Vec<T>
     where
         F: FnMut(&E) -> Option<T>,
     {
         let events = self.events.lock().unwrap();
         events.iter().filter_map(&mut predicate).collect()
+    }
+
+    pub fn get_all_events(&self) -> Vec<E> {
+        let events = self.events.lock().unwrap();
+        events.clone()
     }
 }

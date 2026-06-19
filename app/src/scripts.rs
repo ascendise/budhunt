@@ -1,4 +1,5 @@
 use ace::{component, event, math, vec2, vec3};
+
 #[cfg(test)]
 mod tests;
 
@@ -10,20 +11,27 @@ impl ace::Script for MovementScript {
         let camera = player
             .iter()
             .find(|c| matches!(c, ace::Components::Position(_)))
-            .expect("No camera position found");
+            .expect("No position for player entity found");
         let mut camera = component!(camera, ace::Components::Position).clone();
-        let inputs = events.handle_events(|e| event!(e, ace::Event::Input));
+        let inputs = events.get_events(|e| event!(e, ace::Event::Input));
         let cursor_offset = inputs
             .iter()
             .find(|i| matches!(i, ace::Input::MoveCursor(_)))
             .map(|i| component!(i, ace::Input::MoveCursor).clone())
             .unwrap_or(vec2!(0.0));
         let move_dir = self.turn_camera(&mut camera, &cursor_offset);
-        self.move_camera(&mut camera, &inputs, &move_dir);
-        for event in events.handle_events(|e| event!(e, ace::Event::Collision)) {
-            println!("Collision detected: {} and {}", event.0, event.1)
-        }
-        vec![ace::Components::Position(camera)]
+        let velocity = self.get_camera_velocity(&inputs, &move_dir);
+        let mut rigid_body = player
+            .iter()
+            .find(|c| matches!(c, ace::Components::RigidBody(_)))
+            .map(|c| component!(c, ace::Components::RigidBody))
+            .expect("no physics for player entity found")
+            .clone();
+        rigid_body.set_velocity(velocity);
+        vec![
+            ace::Components::Position(camera),
+            ace::Components::RigidBody(rigid_body),
+        ]
     }
 }
 impl MovementScript {
@@ -51,12 +59,11 @@ impl MovementScript {
         move_dir
     }
 
-    fn move_camera(
+    fn get_camera_velocity(
         &self,
-        camera: &mut ace::Position,
         inputs: &[ace::Input],
         move_direction: &math::Vec3,
-    ) {
+    ) -> math::Vec3 {
         let mut movement = math::Vec3::default();
         let speed = 10.0;
         let speed = self.clock.time_delta() * speed;
@@ -75,7 +82,6 @@ impl MovementScript {
         if inputs.contains(&ace::Input::Left) {
             movement = &(&movement / 2.0) - &strafe;
         }
-        let movement = movement * speed;
-        camera.position = &camera.position + &movement;
+        movement * speed
     }
 }

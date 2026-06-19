@@ -203,6 +203,39 @@ pub fn update_entity_should_update_component2() {
 }
 
 #[test]
+pub fn update_entity_batch_should_allow_upating_multiple_components() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<TestComponents, 32>();
+    let entity = entities.create_entity(vec![
+        TestComponents::Number(0),
+        TestComponents::Decimal(1.0),
+    ]);
+    // Act
+    entities.update_entity_batch(
+        entity,
+        vec![
+            TestComponents::Number(128),
+            TestComponents::Decimal(1.23),
+            TestComponents::Marker,
+        ],
+    );
+    // Assert
+    assert_eq!(
+        &Some(TestComponents::Number(128)),
+        &entities[TestComponents::NUMBER][entity]
+    );
+    assert_eq!(
+        &Some(TestComponents::Decimal(1.23)),
+        &entities[TestComponents::DECIMAL][entity]
+    );
+    assert_eq!(
+        1,
+        entities.get_entities(TestComponents::MARKER).len(),
+        "Marker component was not added!"
+    );
+}
+
+#[test]
 pub fn update_entity_should_add_new_component() {
     // Arrange
     let mut entities = Entities::empty_custom::<TestComponents, 32>();

@@ -1,5 +1,5 @@
 use crate::{
-    Components, Entities, Event, Events, Position, System, event, math,
+    Components, Entities, Event, Events, System, event, math,
     physics::{self, Collider, CollisionEvent, CollisionSystem},
     vec3,
 };
@@ -19,17 +19,11 @@ pub fn run_should_push_event_for_collision() {
     let mut entities = Entities::empty();
     entities.create_entity(vec![
         Components::Collider(plane.clone()),
-        Components::Position(Position {
-            position: vec3!(0.0),
-            direction: Default::default(),
-        }),
+        Components::Position(vec3!(0.0)),
     ]);
     entities.create_entity(vec![
         Components::Collider(plane.clone()),
-        Components::Position(Position {
-            position: vec3!(0.0),
-            direction: Default::default(),
-        }),
+        Components::Position(vec3!(0.0)),
     ]);
     // Act
     let events = Events::empty();
@@ -70,17 +64,11 @@ pub fn run_should_not_push_event_if_no_collision() {
     let mut entities = Entities::empty();
     entities.create_entity(vec![
         Components::Collider(plane.clone()),
-        Components::Position(Position {
-            position: vec3!(0.0),
-            direction: Default::default(),
-        }),
+        Components::Position(vec3!(0.0)),
     ]);
     entities.create_entity(vec![
         Components::Collider(plane.clone()),
-        Components::Position(Position {
-            position: vec3!(2.0),
-            direction: Default::default(),
-        }),
+        Components::Position(vec3!(2.0)),
     ]);
     // Act
     let events = Events::empty();
@@ -117,19 +105,13 @@ pub fn run_should_calculate_collision_point_for_cube_moving_into_static_cube() {
     let static_cube = entities.create_entity(vec![
         Components::Collider(static_cube),
         Components::RigidBody(physics::RigidBody::static_body()),
-        Components::Position(Position {
-            position: vec3!(0.0),
-            direction: Default::default(),
-        }),
+        Components::Position(vec3!(0.0)),
     ]);
     let moving_cube = cube(1.0);
     let moving_cube = entities.create_entity(vec![
         Components::Collider(moving_cube),
         Components::RigidBody(physics::RigidBody::new(vec3!(1.0, 0.0, 0.0))),
-        Components::Position(Position {
-            position: vec3!(-0.1, 0.0, 0.0),
-            direction: Default::default(),
-        }),
+        Components::Position(vec3!(-0.1, 0.0, 0.0)),
     ]);
     // Act
     let events = Events::empty();

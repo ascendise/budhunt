@@ -8,19 +8,14 @@ pub struct MovementScript {
 }
 impl ace::Script for MovementScript {
     fn run(&self, player: &[&ace::Components], events: &ace::Events) -> Vec<ace::Components> {
-        let camera = player
-            .iter()
-            .find(|c| matches!(c, ace::Components::Position(_)))
-            .expect("No position for player entity found");
-        let mut camera = component!(camera, ace::Components::Position).clone();
         let inputs = events.get_events(|e| event!(e, ace::Event::Input));
         let cursor_offset = inputs
             .iter()
             .find(|i| matches!(i, ace::Input::MoveCursor(_)))
             .map(|i| component!(i, ace::Input::MoveCursor).clone())
             .unwrap_or(vec2!(0.0));
-        let move_dir = self.turn_camera(&mut camera, &cursor_offset);
-        let velocity = self.get_camera_velocity(&inputs, &move_dir);
+        let (move_direction, camera_direction) = self.turn_camera(&cursor_offset);
+        let velocity = self.get_camera_velocity(&inputs, &move_direction);
         let mut rigid_body = player
             .iter()
             .find(|c| matches!(c, ace::Components::RigidBody(_)))
@@ -29,7 +24,7 @@ impl ace::Script for MovementScript {
             .clone();
         rigid_body.set_velocity(velocity);
         vec![
-            ace::Components::Position(camera),
+            ace::Components::Direction(camera_direction),
             ace::Components::RigidBody(rigid_body),
         ]
     }
@@ -39,8 +34,8 @@ impl MovementScript {
         Self { clock }
     }
 
-    /// Moves camera on xyz-axis and returns movement direction (y axis rotation)
-    fn turn_camera(&self, camera: &mut ace::Position, offset: &math::Vec2) -> math::Vec3 {
+    /// Moves camera on xyz-axis and returns movement direction and current view direction
+    fn turn_camera(&self, offset: &math::Vec2) -> (math::Vec3, math::Vec3) {
         let yaw = math::radians(offset.x);
         let pitch = math::radians(offset.y);
         let move_dir = math::Vec3 {
@@ -55,8 +50,7 @@ impl MovementScript {
             z: yaw.sin() * pitch.cos(),
         }
         .normalize();
-        camera.direction = turn_dir;
-        move_dir
+        (move_dir, turn_dir)
     }
 
     fn get_camera_velocity(

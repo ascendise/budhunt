@@ -120,10 +120,7 @@ fn spawn_monkeys(
     let collider = ace::physics::Collider::new(collider);
     for monkey in monkeys {
         let model = monkey_model.clone();
-        let position = ace::Components::Position(ace::Position {
-            position: monkey.clone(),
-            direction: Default::default(),
-        });
+        let position = ace::Components::Position(monkey.clone());
         let collider = ace::Components::Collider(collider.clone());
         let components = vec![ace::Components::Model(model), position, collider];
         entities.create_entity(components);
@@ -149,17 +146,14 @@ fn spawn_point_lights(
             .iter()
             .find(|e| matches!(e, ace::Components::Position(_)));
         let mut position = component!(position, Some(ace::Components::Position)).clone();
-        position.position = position.position + vec3!(0.0, 0.001, 0.0);
+        position = position + vec3!(0.0, 0.001, 0.0);
         vec![ace::Components::Position(position)]
     });
     let move_script = Box::new(move_script);
     for position in point_lights {
         let light = gfx::Light::Point(point_light.clone());
         let light = ace::Components::Light(light);
-        let position = ace::Components::Position(ace::Position {
-            position,
-            direction: Default::default(),
-        });
+        let position = ace::Components::Position(position);
         let script = ace::Components::Scripts(vec![move_script.clone()]);
         entities.create_entity(vec![light, position, script]);
     }
@@ -221,7 +215,7 @@ fn spawn_floor(
     let plane_model = renderer.load_mesh(&plane_mesh, shader_program);
     entities.create_entity(vec![
         ace::Components::Model(plane_model),
-        ace::Components::Position(ace::Position::default()),
+        ace::Components::Position(Default::default()),
     ]);
 }
 
@@ -234,10 +228,8 @@ fn spawn_player(
     let flashlight = create_spotlight(shader_program);
     entities.create_entity(vec![
         ace::Components::Light(flashlight),
-        ace::Components::Position(ace::Position {
-            position: vec3!(0.0, 0.0, -100.0),
-            direction: Default::default(),
-        }),
+        ace::Components::Position(vec3!(0.0, 0.0, -100.0)),
+        ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
         ace::Components::Scripts(vec![Box::new(MovementScript::new(clock))]),
         ace::Components::Player,
         ace::Components::Collider(collider),

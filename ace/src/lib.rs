@@ -51,7 +51,7 @@ macro_rules! component {
     ($v:expr, Some($e:path)) => {
         match $v {
             Some($e(v)) => v,
-            _ => panic!(stringify!($e)),
+            _ => panic!("this is not a {}", stringify!($e)),
         }
     };
     ($v:expr, Some($e:path) or $default:expr) => {
@@ -63,7 +63,7 @@ macro_rules! component {
     ($v:expr, $e:path) => {
         match $v {
             $e(v) => v,
-            _ => panic!(stringify!($e)),
+            _ => panic!("this is not a {}", stringify!($e)),
         }
     };
 }
@@ -250,7 +250,8 @@ impl<T: Component, const E: usize> Index<u32> for Entities<T, E> {
 
 #[derive(Component)]
 pub enum Components {
-    Position(Position),
+    Position(math::Vec3),
+    Direction(math::Vec3),
     Model(gfx::Model),
     Light(gfx::Light),
     Scripts(Vec<Box<dyn scripts::Script>>),
@@ -276,13 +277,6 @@ pub trait Clock {
     fn time_delta(&self) -> f32;
     /// Updates time delta.
     fn stop_frame_time(&self);
-}
-
-// Split component into Position and Direction as Direction is really only needed for rendering
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Position {
-    pub position: math::Vec3,
-    pub direction: math::Vec3,
 }
 
 pub trait InputListener {

@@ -24,15 +24,21 @@ impl RenderSystem {
     fn find_camera(entities: &mut Entities) -> Camera {
         let entities = entities.get_entities(Components::PLAYER | Components::POSITION);
         let (_, components) = entities.first().expect("Player not found!");
-        let camera = components
+        let camera_position = components
             .iter()
             .find(|c| matches!(c, Components::Position(_)))
             .map(|c| component!(c, Components::Position))
             .unwrap()
             .clone();
+        let camera_direction = components
+            .iter()
+            .find(|c| matches!(c, Components::Direction(_)))
+            .map(|c| component!(c, Components::Direction))
+            .unwrap()
+            .clone();
         gfx::Camera {
-            position: camera.position,
-            direction: camera.direction,
+            position: camera_position,
+            direction: camera_direction,
         }
     }
 
@@ -53,6 +59,7 @@ impl System for RenderSystem {
         let camera = Self::find_camera(entities);
         let models = entities.get_bucket(Components::MODEL);
         let positions = entities.get_bucket(Components::POSITION);
+        let directions = entities.get_bucket(Components::DIRECTION);
         let lights = entities.get_bucket(Components::LIGHT);
         let mut render_models = vec![];
         let mut render_lights = vec![];
@@ -62,15 +69,16 @@ impl System for RenderSystem {
                 let position = &positions[m];
                 let position =
                     component!(position, Some(Components::Position) or &Default::default());
-                model.transform.position = &model.transform.position + &position.position;
+                model.transform.position = &model.transform.position + position;
                 render_models.push(model);
             }
             if let Some(Components::Light(light)) = &lights[m] {
                 let mut light = light.clone();
-                let position = &positions[m];
                 let position =
-                    component!(position, Some(Components::Position) or &Default::default());
-                light.transform(position);
+                    component!(&positions[m], Some(Components::Position) or &Default::default());
+                let direction =
+                    component!(&directions[m], Some(Components::Direction) or &Default::default());
+                light.transform(position, direction);
                 render_lights.push(light);
             }
         }
@@ -184,14 +192,14 @@ pub enum Light {
     Spot(SpotLight),
 }
 impl Light {
-    pub fn transform(&mut self, position: &Position) {
+    pub fn transform(&mut self, position: &math::Vec3, direction: &math::Vec3) {
         let (light_position, light_direction) = match self {
             Light::Point(l) => (&mut l.model.transform.position, &mut Default::default()),
             Light::Spot(l) => (&mut l.position, &mut l.direction),
             _ => return,
         };
-        *light_position = &light_position.clone() + &position.position;
-        *light_direction = &light_direction.clone() + &position.direction;
+        *light_position = &light_position.clone() + position;
+        *light_direction = &light_direction.clone() + direction;
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
-    Components, Entities, Event, Events, Position, System, component, event, math, maybe_component,
-    vec3, vec4,
+    Components, Entities, Event, Events, System, component, event, math, maybe_component, vec3,
+    vec4,
 };
 
 #[cfg(test)]
@@ -28,13 +28,17 @@ impl PhysicsSystem {
         Self { collision_system }
     }
 
-    fn move_entity(entity: usize, entities: &Entities, new_positions: &mut Vec<(usize, Position)>) {
+    fn move_entity(
+        entity: usize,
+        entities: &Entities,
+        new_positions: &mut Vec<(usize, math::Vec3)>,
+    ) {
         let rigid_bodies = entities.get_bucket(Components::RIGIDBODY);
         let positions = entities.get_bucket(Components::POSITION);
         let rigid_body = component!(&rigid_bodies[entity], Some(Components::RigidBody));
         if let Some(velocity) = &rigid_body.velocity {
             let mut position = component!(&positions[entity], Some(Components::Position)).clone();
-            position.position = &position.position + velocity;
+            position = &position + velocity;
             new_positions.push((entity, position));
         }
     }
@@ -47,13 +51,7 @@ impl PhysicsSystem {
         collision_system.run(entities, events);
         for event in events.get_events(|e| event!(e, Event::Collision)) {
             if let Some(collision_point) = event.collision_point {
-                let mut position = component!(
-                    &entities[Components::POSITION][event.entity_id],
-                    Some(Components::Position)
-                )
-                .clone();
-                position.position = collision_point;
-                entities.update_entity(event.entity_id, Components::Position(position));
+                entities.update_entity(event.entity_id, Components::Position(collision_point));
             }
         }
     }
@@ -93,10 +91,10 @@ impl System for CollisionSystem {
         let rigid_bodies = entities.get_bucket(Components::RIGIDBODY);
         for (c, collider) in colliders.iter().enumerate().filter(|(_, c)| c.is_some()) {
             let position = component!(&positions[c], Some(Components::Position)
-                or &Position::default());
+                or &Default::default());
             let mut collider = CollisionEntity {
                 collider: component!(collider, Some(Components::Collider)).clone(),
-                position: position.position.clone(),
+                position: position.clone(),
                 physics: maybe_component!(&rigid_bodies[c], Components::RigidBody).cloned(),
             };
             for (o, other) in colliders
@@ -108,7 +106,7 @@ impl System for CollisionSystem {
                 let position = component!(&positions[o], Some(Components::Position));
                 let mut other = CollisionEntity {
                     collider: component!(other, Some(Components::Collider)).clone(),
-                    position: position.position.clone(),
+                    position: position.clone(),
                     physics: maybe_component!(&rigid_bodies[o], Components::RigidBody).cloned(),
                 };
                 if collider.intersects(&other) {

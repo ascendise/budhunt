@@ -43,17 +43,14 @@ pub fn run_should_run_script_on_all_entities() {
 pub fn run_should_update_entity_with_returned_entity() {
     // Arrange
     let sut = setup();
-    let add_position_script = Box::new(AddPositionScript);
+    let add_position_script = Box::new(UpdatePositionScript);
     let mut entities = Entities::empty();
     entities.create_entity(vec![Components::Scripts(vec![add_position_script.clone()])]);
     // Act
     sut.run(&mut entities, &Events::empty());
     // Assert
     let entity = entities.get_entity(0);
-    let expected_position = Position {
-        position: vec3!(10.0),
-        direction: Default::default(),
-    };
+    let expected_position = vec3!(10.0);
     assert!(
         {
             let mut passed = false;
@@ -73,24 +70,18 @@ pub fn run_should_update_entity_with_returned_entity() {
 pub fn run_should_update_existing_component_with_returned_entity() {
     // Arrange
     let sut = setup();
-    let add_position_script = Box::new(AddPositionScript);
+    let add_position_script = Box::new(UpdatePositionScript);
     let mut entities = Entities::empty();
-    let old_position = Position {
-        position: vec3!(f32::MAX),
-        direction: vec3!(f32::MAX),
-    };
+    let old_position = Components::Position(vec3!(f32::MAX));
     entities.create_entity(vec![
         Components::Scripts(vec![add_position_script.clone()]),
-        Components::Position(old_position),
+        old_position,
     ]);
     // Act
     sut.run(&mut entities, &Events::empty());
     // Assert
     let entity = entities.get_entity(0);
-    let expected_position = Position {
-        position: vec3!(10.0),
-        direction: Default::default(),
-    };
+    let expected_position = vec3!(10.0);
     assert!(
         {
             let mut passed = false;
@@ -107,13 +98,9 @@ pub fn run_should_update_existing_component_with_returned_entity() {
 }
 
 #[derive(Clone)]
-pub struct AddPositionScript;
-impl Script for AddPositionScript {
+pub struct UpdatePositionScript;
+impl Script for UpdatePositionScript {
     fn run(&self, _: &[&Components], _: &Events) -> Vec<Components> {
-        let position = Position {
-            position: vec3!(10.0),
-            direction: Default::default(),
-        };
-        vec![Components::Position(position)]
+        vec![Components::Position(vec3!(10.0))]
     }
 }

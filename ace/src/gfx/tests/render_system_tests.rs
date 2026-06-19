@@ -24,6 +24,7 @@ pub fn render_should_pass_objects_to_renderer() {
     entities.create_entity(vec![
         Components::Player,
         Components::Position(Default::default()),
+        Components::Direction(Default::default()),
     ]); // Camera
     entities.create_entity(vec![Components::Position(Default::default())]); // Some random filler
     let expected_model = Model {
@@ -68,6 +69,7 @@ pub fn render_should_transform_models_with_position() {
     entities.create_entity(vec![
         Components::Player,
         Components::Position(Default::default()),
+        Components::Direction(Default::default()),
     ]); // Camera
     let model = Model {
         vao: 123,
@@ -85,13 +87,9 @@ pub fn render_should_transform_models_with_position() {
         vertices: 3,
         indices: 3,
     };
-    let position = Position {
-        position: vec3!(5.0),
-        direction: vec3!(0.0),
-    };
     entities.create_entity(vec![
         Components::Model(model.clone()),
-        Components::Position(position),
+        Components::Position(vec3!(5.0)),
     ]);
     // Act
     sut.run(&mut entities, &Events::empty());
@@ -111,6 +109,7 @@ pub fn render_should_change_fov_on_scroll(scroll: Input, expected_fov: f32) {
     entities.create_entity(vec![
         Components::Player,
         Components::Position(Default::default()),
+        Components::Direction(Default::default()),
     ]);
     let events = Events::empty();
     events.push_event(Event::Input(scroll));
@@ -131,6 +130,7 @@ pub fn render_should_clamp_fov_range(scroll: Input, expected_fov: f32) {
     entities.create_entity(vec![
         Components::Player,
         Components::Position(Default::default()),
+        Components::Direction(Default::default()),
     ]);
     // Act
     let mut inputs: Vec<Event> = (0..100).map(|_| Event::Input(scroll.clone())).collect();

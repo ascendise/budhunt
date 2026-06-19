@@ -6,24 +6,22 @@ mod entities_tests;
 #[test]
 pub fn component_should_return_specific_component_type() {
     //Arrange
-    let component: Components = Components::Position(Default::default());
+    let component: Components = Components::Position(vec3!(1.23));
     //Act
     let position = component!(component, Components::Position);
     //Assert
-    assert_eq!(Position::default(), position); // At this point we already asserted that we can get
-    // the inner value
+    assert_eq!(vec3!(1.23), position);
 }
 
 #[test]
 pub fn component_should_return_specific_component_type_for_options() {
     //Arrange
-    let component: Components = Components::Position(Default::default());
+    let component: Components = Components::Position(vec3!(1.23));
     let component: Option<Components> = Some(component);
     //Act
     let position = component!(component, Some(Components::Position));
     //Assert
-    assert_eq!(Position::default(), position); // At this point we already asserted that we can get
-    // the inner value
+    assert_eq!(vec3!(1.23), position);
 }
 
 #[test]

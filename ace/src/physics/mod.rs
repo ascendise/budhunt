@@ -1,6 +1,6 @@
 use crate::{
-    Components, Entities, Event, Events, System, component, event, math, maybe_component, vec3,
-    vec4,
+    Components, Entities, Entity, Event, Events, System, component, event, math, maybe_component,
+    vec3, vec4,
 };
 
 #[cfg(test)]
@@ -12,8 +12,8 @@ pub struct PhysicsSystem {
 impl System for PhysicsSystem {
     fn run(&self, entities: &mut Entities, events: &Events) {
         let mut new_positions = vec![];
-        for (e, _) in entities.get_entities(Components::RIGIDBODY | Components::POSITION) {
-            Self::move_entity(e, entities, &mut new_positions);
+        for entity in entities.get_entities(Components::RIGIDBODY | Components::POSITION) {
+            Self::move_entity(&entity, &mut new_positions);
         }
         for (e, new_position) in new_positions {
             entities.update_entity(e, Components::Position(new_position));
@@ -28,18 +28,11 @@ impl PhysicsSystem {
         Self { collision_system }
     }
 
-    fn move_entity(
-        entity: usize,
-        entities: &Entities,
-        new_positions: &mut Vec<(usize, math::Vec3)>,
-    ) {
-        let rigid_bodies = entities.get_bucket(Components::RIGIDBODY);
-        let positions = entities.get_bucket(Components::POSITION);
-        let rigid_body = component!(&rigid_bodies[entity], Some(Components::RigidBody));
+    fn move_entity(entity: &Entity<'_, Components>, new_positions: &mut Vec<(usize, math::Vec3)>) {
+        let rigid_body = component!(&entity[Components::RIGIDBODY], Components::RigidBody);
         if let Some(velocity) = &rigid_body.velocity {
-            let mut position = component!(&positions[entity], Some(Components::Position)).clone();
-            position = &position + velocity;
-            new_positions.push((entity, position));
+            let position = component!(&entity[Components::POSITION], Components::Position);
+            new_positions.push((entity.id, position + velocity));
         }
     }
 
@@ -86,41 +79,36 @@ impl RigidBody {
 pub struct CollisionSystem;
 impl System for CollisionSystem {
     fn run(&self, entities: &mut crate::Entities, events: &Events) {
-        let colliders = entities.get_bucket(Components::COLLIDER);
-        let positions = entities.get_bucket(Components::POSITION);
+        let colliders = entities.get_entities(Components::COLLIDER | Components::POSITION);
         let rigid_bodies = entities.get_bucket(Components::RIGIDBODY);
-        for (c, collider) in colliders.iter().enumerate().filter(|(_, c)| c.is_some()) {
-            let position = component!(&positions[c], Some(Components::Position)
-                or &Default::default());
-            let mut collider = CollisionEntity {
-                collider: component!(collider, Some(Components::Collider)).clone(),
-                position: position.clone(),
-                physics: maybe_component!(&rigid_bodies[c], Components::RigidBody).cloned(),
+        for collider in &colliders {
+            let mut collision_entity = CollisionEntity {
+                collider: component!(&collider[Components::COLLIDER], Components::Collider).clone(),
+                position: component!(&collider[Components::POSITION], Components::Position).clone(),
+                physics: maybe_component!(&rigid_bodies[collider.id()], Components::RigidBody)
+                    .cloned(),
             };
-            for (o, other) in colliders
-                .iter()
-                .enumerate()
-                .skip(c + 1)
-                .filter(|(_, c)| c.is_some())
-            {
-                let position = component!(&positions[o], Some(Components::Position));
-                let mut other = CollisionEntity {
-                    collider: component!(other, Some(Components::Collider)).clone(),
-                    position: position.clone(),
-                    physics: maybe_component!(&rigid_bodies[o], Components::RigidBody).cloned(),
+            for other in colliders.iter().skip(collider.id() + 1) {
+                let mut other_collision_entity = CollisionEntity {
+                    collider: component!(&other[Components::COLLIDER], Components::Collider)
+                        .clone(),
+                    position: component!(&other[Components::POSITION], Components::Position)
+                        .clone(),
+                    physics: maybe_component!(&rigid_bodies[other.id()], Components::RigidBody)
+                        .cloned(),
                 };
-                if collider.intersects(&other) {
+                if collision_entity.intersects(&other_collision_entity) {
                     let collider_collision_point =
-                        Self::find_collision_point(&mut collider, &other);
+                        Self::find_collision_point(&mut collision_entity, &other_collision_entity);
                     let obstacle_collision_point =
-                        Self::find_collision_point(&mut other, &collider);
+                        Self::find_collision_point(&mut other_collision_entity, &collision_entity);
                     events.push_events(&mut vec![
                         Event::Collision(CollisionEvent {
-                            entity_id: c,
+                            entity_id: collider.id(),
                             collision_point: collider_collision_point,
                         }),
                         Event::Collision(CollisionEvent {
-                            entity_id: o,
+                            entity_id: other.id(),
                             collision_point: obstacle_collision_point,
                         }),
                     ]);

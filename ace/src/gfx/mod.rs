@@ -22,23 +22,12 @@ impl RenderSystem {
     }
 
     fn find_camera(entities: &mut Entities) -> Camera {
-        let entities = entities.get_entities(Components::PLAYER | Components::POSITION);
-        let (_, components) = entities.first().expect("Player not found!");
-        let camera_position = components
-            .iter()
-            .find(|c| matches!(c, Components::Position(_)))
-            .map(|c| component!(c, Components::Position))
-            .unwrap()
-            .clone();
-        let camera_direction = components
-            .iter()
-            .find(|c| matches!(c, Components::Direction(_)))
-            .map(|c| component!(c, Components::Direction))
-            .unwrap()
-            .clone();
+        let entities = entities
+            .get_entities(Components::PLAYER | Components::POSITION | Components::DIRECTION);
+        let entity = entities.first().expect("Player not found!");
         gfx::Camera {
-            position: camera_position,
-            direction: camera_direction,
+            position: component!(&entity[Components::POSITION], Components::Position).clone(),
+            direction: component!(&entity[Components::DIRECTION], Components::Direction).clone(),
         }
     }
 

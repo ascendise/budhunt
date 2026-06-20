@@ -2,6 +2,7 @@ use crate::*;
 use pretty_assertions::assert_eq;
 
 mod entities_tests;
+mod entity_tests;
 
 #[test]
 pub fn component_should_return_specific_component_type() {

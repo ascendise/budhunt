@@ -1,5 +1,6 @@
 use crate::Component;
 use crate::Entities;
+use crate::Entity;
 use pretty_assertions::assert_eq;
 
 #[derive(Component, PartialEq, Clone, Debug)]
@@ -157,14 +158,13 @@ pub fn get_entity_should_return_all_components_of_one_entity() {
     // Arrange
     let mut entities = Entities::empty_custom::<TestComponents, 32>();
     entities.create_entity(vec![TestComponents::Decimal(2.0)]);
-    let entity = entities.create_entity(vec![
-        TestComponents::Number(128),
-        TestComponents::Decimal(1.0),
-    ]);
+    let component1 = TestComponents::Number(128);
+    let component2 = TestComponents::Decimal(1.0);
+    let entity_id = entities.create_entity(vec![component1.clone(), component2.clone()]);
     // Act
-    let entity = entities.get_entity(entity);
+    let entity = entities.get_entity(entity_id);
     // Assert
-    let expected_entity = vec![&TestComponents::Decimal(1.0), &TestComponents::Number(128)];
+    let expected_entity = Entity::new(entity_id, vec![&component1, &component2]);
     assert_eq!(expected_entity, entity);
 }
 
@@ -299,11 +299,11 @@ pub fn get_entities_should_return_all_entities_with_matching_flags() {
     let entities = entities.get_entities(TestComponents::DECIMAL | TestComponents::NUMBER);
     // Assert
     let expected_entities = vec![
-        (
+        Entity::new(
             0,
             vec![&TestComponents::Decimal(1.0), &TestComponents::Number(128)],
         ),
-        (
+        Entity::new(
             1,
             vec![
                 &TestComponents::Decimal(2.0),

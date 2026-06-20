@@ -7,7 +7,11 @@ pub struct MovementScript {
     clock: Box<dyn ace::Clock>,
 }
 impl ace::Script for MovementScript {
-    fn run(&self, player: &[&ace::Components], events: &ace::Events) -> Vec<ace::Components> {
+    fn run(
+        &self,
+        player: &ace::Entity<'_, ace::Components>,
+        events: &ace::Events,
+    ) -> Vec<ace::Components> {
         let inputs = events.get_events(|e| event!(e, ace::Event::Input));
         let cursor_offset = inputs
             .iter()
@@ -16,12 +20,11 @@ impl ace::Script for MovementScript {
             .unwrap_or(vec2!(0.0));
         let (move_direction, camera_direction) = self.turn_camera(&cursor_offset);
         let velocity = self.get_camera_velocity(&inputs, &move_direction);
-        let mut rigid_body = player
-            .iter()
-            .find(|c| matches!(c, ace::Components::RigidBody(_)))
-            .map(|c| component!(c, ace::Components::RigidBody))
-            .expect("no physics for player entity found")
-            .clone();
+        let mut rigid_body = component!(
+            &player[ace::Components::RIGIDBODY],
+            ace::Components::RigidBody
+        )
+        .clone();
         rigid_body.set_velocity(velocity);
         vec![
             ace::Components::Direction(camera_direction),

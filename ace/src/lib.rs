@@ -173,11 +173,13 @@ impl<T: Component, const E: usize> Entities<T, E> {
         entity_id
     }
 
-    pub fn get_entity(&self, entity_id: usize) -> Vec<&T> {
-        self.components
+    pub fn get_entity(&self, entity_id: usize) -> Entity<'_, T> {
+        let components = self
+            .components
             .iter()
             .flat_map(|(_, b)| &b[entity_id])
-            .collect()
+            .collect();
+        Entity::new(entity_id, components)
     }
 
     pub fn update_entity(&mut self, entity_id: usize, component: T) {
@@ -218,13 +220,13 @@ impl<T: Component, const E: usize> Entities<T, E> {
     }
 
     /// Takes a set of bitflags OR'd together and returns filtered (only specified components) entities.
-    fn get_entities(&self, components: u32) -> Vec<(usize, Vec<&T>)> {
+    pub fn get_entities(&self, components: u32) -> Vec<Entity<'_, T>> {
         let mut entities = vec![];
         for e in 0..self.entities_count {
             let entity = self.register[e];
             if entity & components >= components {
                 let entity = self.get_entity(e);
-                entities.push((e, entity));
+                entities.push(entity);
             }
         }
         entities
@@ -245,6 +247,38 @@ impl<T: Component, const E: usize> Index<u32> for Entities<T, E> {
         self.components
             .get(&index)
             .expect("Access to unknown component type")
+    }
+}
+
+/// Set of [components](Component) representing a (part of a) single [Entity] from [Entities]
+#[derive(Debug, PartialEq, Clone)]
+pub struct Entity<'a, T: Component> {
+    id: usize,
+    components: IndexMap<u32, &'a T>,
+}
+impl<'a, T: Component> Entity<'a, T> {
+    pub fn new(id: usize, components: Vec<&'a T>) -> Self {
+        let mut component_map: IndexMap<u32, &'a T> = IndexMap::new();
+        for component in components {
+            component_map.insert(component.get_type(), component);
+        }
+        Self {
+            id,
+            components: component_map,
+        }
+    }
+
+    pub fn id(&self) -> usize {
+        self.id
+    }
+}
+impl<'a, T: Component> Index<u32> for Entity<'a, T> {
+    type Output = T;
+
+    fn index(&self, index: u32) -> &Self::Output {
+        self.components
+            .get(&index)
+            .expect("Tried to access a component missing in this entity")
     }
 }
 

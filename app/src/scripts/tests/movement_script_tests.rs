@@ -24,7 +24,7 @@ pub fn run_should_change_player_velocity_on_matching_input(
     let position = Components::Position(vec3!(0.0));
     let direction = Components::Direction(vec3!(0.0, 0.0, 1.0));
     let rigid_body = Components::RigidBody(Default::default());
-    let camera_entity = vec![&position, &direction, &rigid_body];
+    let camera_entity = Entity::new(0, vec![&position, &direction, &rigid_body]);
     // Act
     let events = Events::empty();
     let move_cursor = Input::MoveCursor(vec2!(90.0, 0.0));
@@ -50,7 +50,7 @@ pub fn run_should_turn_camera_on_matching_input(
     let position = Components::Position(vec3!(0.0));
     let direction = Components::Direction(vec3!(0.0, 0.0, 1.0));
     let rigid_body = Components::RigidBody(Default::default());
-    let camera_entity = vec![&position, &direction, &rigid_body];
+    let camera_entity = Entity::new(0, vec![&position, &direction, &rigid_body]);
     // Act
     let move_cursor = Input::MoveCursor(cursor_offset);
     let events = Events::empty();

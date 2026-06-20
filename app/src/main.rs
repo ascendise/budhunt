@@ -141,12 +141,12 @@ fn spawn_point_lights(
         vec3!(-4.0, 2.0, -12.0),
         vec3!(0.0, 0.0, -3.0),
     ];
-    let move_script = script!(|entity: &[&ace::Components], _| {
-        let position = entity
-            .iter()
-            .find(|e| matches!(e, ace::Components::Position(_)));
-        let mut position = component!(position, Some(ace::Components::Position)).clone();
-        position = position + vec3!(0.0, 0.001, 0.0);
+    let move_script = script!(|entity: &ace::Entity<'_, ace::Components>, _| {
+        let position = component!(
+            &entity[ace::Components::POSITION],
+            ace::Components::Position
+        );
+        let position = position + &vec3!(0.0, 0.001, 0.0);
         vec![ace::Components::Position(position)]
     });
     let move_script = Box::new(move_script);

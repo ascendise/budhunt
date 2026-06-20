@@ -51,18 +51,10 @@ pub fn run_should_update_entity_with_returned_entity() {
     // Assert
     let entity = entities.get_entity(0);
     let expected_position = vec3!(10.0);
-    assert!(
-        {
-            let mut passed = false;
-            for component in entity {
-                if let Components::Position(p) = component {
-                    assert_eq!(&expected_position, p);
-                    passed = true;
-                }
-            }
-            passed
-        },
-        "Position component was not added"
+    assert_eq!(
+        &expected_position,
+        component!(&entity[Components::POSITION], Components::Position),
+        "New component was not added!"
     );
 }
 
@@ -82,25 +74,17 @@ pub fn run_should_update_existing_component_with_returned_entity() {
     // Assert
     let entity = entities.get_entity(0);
     let expected_position = vec3!(10.0);
-    assert!(
-        {
-            let mut passed = false;
-            for component in entity {
-                if let Components::Position(p) = component {
-                    assert_eq!(&expected_position, p);
-                    passed = true;
-                }
-            }
-            passed
-        },
-        "Position component was not added"
+    assert_eq!(
+        &expected_position,
+        component!(&entity[Components::POSITION], Components::Position),
+        "Existing component was not updated!"
     );
 }
 
 #[derive(Clone)]
 pub struct UpdatePositionScript;
 impl Script for UpdatePositionScript {
-    fn run(&self, _: &[&Components], _: &Events) -> Vec<Components> {
+    fn run(&self, _: &Entity<'_, Components>, _: &Events) -> Vec<Components> {
         vec![Components::Position(vec3!(10.0))]
     }
 }

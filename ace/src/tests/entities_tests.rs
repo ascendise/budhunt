@@ -169,112 +169,6 @@ pub fn get_entity_should_return_all_components_of_one_entity() {
 }
 
 #[test]
-pub fn update_entity_should_update_component() {
-    // Arrange
-    let mut entities = Entities::empty_custom::<TestComponents, 32>();
-    let entity = entities.create_entity(vec![
-        TestComponents::Number(0),
-        TestComponents::Decimal(1.0),
-    ]);
-    // Act
-    entities.update_entity(entity, TestComponents::Number(128));
-    // Assert
-    let component = &entities[TestComponents::NUMBER][entity];
-    assert_eq!(&Some(TestComponents::Number(128)), component);
-}
-
-#[test]
-pub fn update_entity_should_update_component2() {
-    // Arrange
-    let mut entities = Entities::empty_custom::<TestComponents, 32>();
-    let non_updated_entity = entities.create_entity(vec![TestComponents::Number(1)]);
-    let entity = entities.create_entity(vec![TestComponents::Decimal(1.0)]);
-    // Act
-    entities.update_entity(entity, TestComponents::Number(128));
-    // Assert
-    let component = &entities[TestComponents::NUMBER][entity];
-    assert_eq!(&Some(TestComponents::Number(128)), component);
-    let non_updated_component = &entities[TestComponents::NUMBER][non_updated_entity];
-    assert_eq!(
-        &Some(TestComponents::Number(1)),
-        non_updated_component,
-        "Updating entity cleared bucket!"
-    );
-}
-
-#[test]
-pub fn update_entity_batch_should_allow_upating_multiple_components() {
-    // Arrange
-    let mut entities = Entities::empty_custom::<TestComponents, 32>();
-    let entity = entities.create_entity(vec![
-        TestComponents::Number(0),
-        TestComponents::Decimal(1.0),
-    ]);
-    // Act
-    entities.update_entity_batch(
-        entity,
-        vec![
-            TestComponents::Number(128),
-            TestComponents::Decimal(1.23),
-            TestComponents::Marker,
-        ],
-    );
-    // Assert
-    assert_eq!(
-        &Some(TestComponents::Number(128)),
-        &entities[TestComponents::NUMBER][entity]
-    );
-    assert_eq!(
-        &Some(TestComponents::Decimal(1.23)),
-        &entities[TestComponents::DECIMAL][entity]
-    );
-    assert_eq!(
-        1,
-        entities.get_entities(TestComponents::MARKER).len(),
-        "Marker component was not added!"
-    );
-}
-
-#[test]
-pub fn update_entity_should_add_new_component() {
-    // Arrange
-    let mut entities = Entities::empty_custom::<TestComponents, 32>();
-    let entity = entities.create_entity(vec![TestComponents::Decimal(1.0)]);
-    // Act
-    entities.update_entity(entity, TestComponents::Number(128));
-    // Assert
-    let component = &entities[TestComponents::NUMBER][entity];
-    assert_eq!(&Some(TestComponents::Number(128)), component);
-}
-
-#[test]
-pub fn update_entity_should_update_register() {
-    // Arrange
-    let mut entities = Entities::empty_custom::<TestComponents, 32>();
-    let entity = entities.create_entity(vec![TestComponents::Decimal(1.0)]);
-    // Act
-    entities.update_entity(entity, TestComponents::Number(128));
-    // Assert
-    let found_entities = entities.get_entities(TestComponents::DECIMAL | TestComponents::NUMBER);
-    assert!(!found_entities.is_empty(), "Register was not updated!");
-}
-
-#[test]
-pub fn update_entity_should_not_create_bucket_for_marker_components() {
-    // Arrange
-    let mut entities = Entities::empty_custom::<TestComponents, 32>();
-    let entity = entities.create_entity(vec![TestComponents::Decimal(1.0)]);
-    // Act
-    entities.update_entity(entity, TestComponents::Marker);
-    // Assert
-    assert_eq!(
-        1,
-        entities.components.keys().count(),
-        "Bucket for marker component created!"
-    );
-}
-
-#[test]
 pub fn get_entities_should_return_all_entities_with_matching_flags() {
     // Arrange
     let mut entities = Entities::empty_custom::<TestComponents, 32>();
@@ -313,4 +207,126 @@ pub fn get_entities_should_return_all_entities_with_matching_flags() {
         ),
     ];
     assert_eq!(expected_entities, entities);
+}
+
+#[test]
+pub fn update_and_commit_should_update_existing_component() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<TestComponents, 32>();
+    let entity1 = entities.create_entity(vec![TestComponents::Decimal(1.0)]);
+    let entity2 = entities.create_entity(vec![TestComponents::Decimal(2.0)]);
+    // Act
+    let mut updates = entities.update();
+    updates
+        .set(entity1, TestComponents::Decimal(11.0))
+        .set(entity2, TestComponents::Decimal(12.0));
+    entities.commit(updates);
+    // Assert
+    assert_eq!(
+        &Some(TestComponents::Decimal(11.0)),
+        &entities[TestComponents::DECIMAL][entity1]
+    );
+    assert_eq!(
+        &Some(TestComponents::Decimal(12.0)),
+        &entities[TestComponents::DECIMAL][entity2]
+    );
+}
+
+#[test]
+pub fn update_and_commit_should_add_new_component() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<TestComponents, 32>();
+    let entity1 = entities.create_entity(vec![TestComponents::Decimal(1.0)]);
+    let entity2 = entities.create_entity(vec![TestComponents::Decimal(2.0)]);
+    // Act
+    let mut updates = entities.update();
+    updates
+        .set(entity1, TestComponents::Number(11))
+        .set(entity2, TestComponents::Number(12));
+    entities.commit(updates);
+    // Assert
+    let expected_flags = TestComponents::DECIMAL | TestComponents::NUMBER;
+    assert_eq!(
+        expected_flags, entities.register[entity1],
+        "Bitflags were not updated!"
+    );
+    assert_eq!(
+        expected_flags, entities.register[entity2],
+        "Bitflags were not updated!"
+    );
+    assert_eq!(
+        &Some(TestComponents::Number(11)),
+        &entities[TestComponents::NUMBER][entity1]
+    );
+    assert_eq!(
+        &Some(TestComponents::Number(12)),
+        &entities[TestComponents::NUMBER][entity2]
+    );
+}
+
+#[test]
+pub fn update_and_commit_should_handle_marker_component() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<TestComponents, 32>();
+    let entity1 = entities.create_entity(vec![TestComponents::Decimal(1.0)]);
+    let entity2 = entities.create_entity(vec![TestComponents::Decimal(2.0)]);
+    // Act
+    let mut updates = entities.update();
+    updates
+        .set(entity1, TestComponents::Marker)
+        .set(entity2, TestComponents::Marker);
+    entities.commit(updates);
+    // Assert
+    let expected_flags = TestComponents::DECIMAL | TestComponents::MARKER;
+    assert_eq!(
+        expected_flags, entities.register[entity1],
+        "Bitflags were not updated!"
+    );
+    assert_eq!(
+        expected_flags, entities.register[entity2],
+        "Bitflags were not updated!"
+    );
+    assert_eq!(
+        &None,
+        &entities.components.get(&TestComponents::MARKER),
+        "Bucket for marker component created!"
+    );
+}
+
+#[test]
+pub fn update_and_commit_should_allow_setting_multiple_components_at_once() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<TestComponents, 32>();
+    let entity = entities.create_entity(vec![TestComponents::Decimal(1.0)]);
+    // Act
+    let mut updates = entities.update();
+    updates.set_batch(
+        entity,
+        vec![TestComponents::Number(11), TestComponents::Marker],
+    );
+    entities.commit(updates);
+    // Assert
+    let expected_flags = TestComponents::NUMBER | TestComponents::DECIMAL | TestComponents::MARKER;
+    assert_eq!(
+        expected_flags, entities.register[entity],
+        "Bitflags were not updated!"
+    );
+    assert_eq!(
+        &Some(TestComponents::Number(11)),
+        &entities[TestComponents::NUMBER][entity],
+        "Bucket for marker component created!"
+    );
+}
+
+#[test]
+#[should_panic]
+pub fn update_and_commit_should_panic_if_pending_updates_drop_before_commit() {
+    // Arrange
+    let entities = Entities::empty_custom::<TestComponents, 32>();
+    let mut updates = entities.update();
+    updates.set(0, TestComponents::Number(123));
+    // Act
+    // No Entities::commit();
+    // Assert
+    // Panics!
 }

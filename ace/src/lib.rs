@@ -167,9 +167,10 @@ impl<T: Component, const E: usize> Entities<T, E> {
     pub fn create_entity(&mut self, entity: Vec<T>) -> usize {
         let entity_id = self.entities_count;
         self.entities_count = entity_id + 1;
-        for component in entity {
-            self.update_entity(entity_id, component);
-        }
+        let mut updates = self.update();
+        updates.set_batch(entity_id, entity);
+        self.commit(updates);
+
         entity_id
     }
 
@@ -180,29 +181,6 @@ impl<T: Component, const E: usize> Entities<T, E> {
             .flat_map(|(_, b)| &b[entity_id])
             .collect();
         Entity::new(entity_id, components)
-    }
-
-    pub fn update_entity(&mut self, entity_id: usize, component: T) {
-        let type_id = component.get_type();
-        self.register[entity_id] |= type_id;
-        if component.is_marker() {
-            return;
-        }
-        let bucket = self.get_or_create_bucket(type_id);
-        bucket[entity_id] = Some(component);
-    }
-
-    pub fn update_entity_batch(&mut self, entity_id: usize, components: Vec<T>) {
-        for component in components {
-            self.update_entity(entity_id, component);
-        }
-    }
-
-    fn get_or_create_bucket(&mut self, type_id: u32) -> &mut [Option<T>] {
-        match self.components.entry(type_id) {
-            Entry::Occupied(b) => b.into_mut(),
-            Entry::Vacant(e) => e.insert([0; E].map(|_| None)),
-        }
     }
 
     pub fn get_components(&self, component_type: u32) -> Vec<&T> {
@@ -231,6 +209,42 @@ impl<T: Component, const E: usize> Entities<T, E> {
         }
         entities
     }
+
+    /// Creates an empty [Update] object for staging updated components
+    /// # Usage
+    /// ```
+    /// use ace::{Components, Entities, component, vec3};
+    /// let mut entities = Entities::empty();
+    /// let id = entities.create_entity(vec![Components::Position(vec3!(0.0))]);
+    /// let mut updates = entities.update();
+    /// updates.set(id, Components::Position(vec3!(1.0, 2.0, 3.0)));
+    /// entities.commit(updates); // Failing to commit causes panic
+    /// assert_eq!(
+    ///     &vec3!(1.0, 2.0, 3.0),
+    ///     component!(&entities[Components::POSITION][id], Some(Components::Position)));
+    /// ```
+    pub fn update(&self) -> Update<T> {
+        Update::new()
+    }
+
+    pub fn commit(&mut self, mut updates: Update<T>) {
+        for (type_id, mut updates) in updates.updates.drain(0..) {
+            for (entity_id, value) in updates.drain(0..) {
+                self.register[entity_id] |= type_id;
+                if value.is_marker() {
+                    continue;
+                }
+                let bucket = self.get_or_create_bucket(type_id);
+                bucket[entity_id] = Some(value);
+            }
+        }
+    }
+    fn get_or_create_bucket(&mut self, type_id: u32) -> &mut [Option<T>] {
+        match self.components.entry(type_id) {
+            Entry::Occupied(b) => b.into_mut(),
+            Entry::Vacant(e) => e.insert([0; E].map(|_| None)),
+        }
+    }
 }
 impl<T: Component, const E: usize> IndexMut<u32> for Entities<T, E> {
     fn index_mut(&mut self, index: u32) -> &mut Self::Output {
@@ -249,7 +263,6 @@ impl<T: Component, const E: usize> Index<u32> for Entities<T, E> {
             .expect("Access to unknown component type")
     }
 }
-
 /// Set of [components](Component) representing a (part of a) single [Entity] from [Entities]
 #[derive(Debug, PartialEq, Clone)]
 pub struct Entity<'a, T: Component> {
@@ -279,6 +292,46 @@ impl<'a, T: Component> Index<u32> for Entity<'a, T> {
         self.components
             .get(&index)
             .expect("Tried to access a component missing in this entity")
+    }
+}
+#[derive(Default)]
+pub struct Update<T: Component> {
+    updates: IndexMap<u32, IndexMap<usize, T>>,
+}
+impl<T: Component> Update<T> {
+    pub fn new() -> Self {
+        Self {
+            updates: IndexMap::new(),
+        }
+    }
+
+    pub fn set(&mut self, entity_id: usize, component: T) -> &mut Self {
+        let type_id = component.get_type();
+        match self.updates.entry(type_id) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().insert(entity_id, component);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(indexmap::indexmap! {
+                    entity_id => component
+                });
+            }
+        };
+        self
+    }
+
+    pub fn set_batch(&mut self, entity_id: usize, components: Vec<T>) -> &mut Self {
+        for component in components {
+            self.set(entity_id, component);
+        }
+        self
+    }
+}
+impl<T: Component> Drop for Update<T> {
+    fn drop(&mut self) {
+        if !self.updates.is_empty() {
+            panic!("Updates with pending changes dropped! Did you forget Entities::commit()?")
+        }
     }
 }
 

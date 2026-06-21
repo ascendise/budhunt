@@ -11,28 +11,27 @@ pub struct PhysicsSystem {
 }
 impl System for PhysicsSystem {
     fn run(&self, entities: &mut Entities, events: &Events) {
-        let mut new_positions = vec![];
+        let mut updates = entities.update();
         for entity in entities.get_entities(Components::RIGIDBODY | Components::POSITION) {
-            Self::move_entity(&entity, &mut new_positions);
+            Self::move_entity(entity, &mut updates);
         }
-        for (e, new_position) in new_positions {
-            entities.update_entity(e, Components::Position(new_position));
-        }
+        entities.commit(updates);
         if let Some(collision_system) = &self.collision_system {
             Self::handle_collisions(entities, events, collision_system);
         }
     }
 }
+
 impl PhysicsSystem {
     pub fn new(collision_system: Option<CollisionSystem>) -> Self {
         Self { collision_system }
     }
-
-    fn move_entity(entity: &Entity<'_, Components>, new_positions: &mut Vec<(usize, math::Vec3)>) {
+    fn move_entity(entity: Entity<'_, Components>, updates: &mut crate::Update<Components>) {
         let rigid_body = component!(&entity[Components::RIGIDBODY], Components::RigidBody);
         if let Some(velocity) = &rigid_body.velocity {
             let position = component!(&entity[Components::POSITION], Components::Position);
-            new_positions.push((entity.id, position + velocity));
+            let new_position = position + velocity;
+            updates.set(entity.id(), Components::Position(new_position));
         }
     }
 
@@ -42,11 +41,13 @@ impl PhysicsSystem {
         collision_system: &CollisionSystem,
     ) {
         collision_system.run(entities, events);
+        let mut updates = entities.update();
         for event in events.get_events(|e| event!(e, Event::Collision)) {
             if let Some(collision_point) = event.collision_point {
-                entities.update_entity(event.entity_id, Components::Position(collision_point));
+                updates.set(event.entity_id, Components::Position(collision_point));
             }
         }
+        entities.commit(updates);
     }
 }
 

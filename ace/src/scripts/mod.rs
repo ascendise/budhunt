@@ -26,17 +26,15 @@ impl ScriptSystem {}
 impl System for ScriptSystem {
     fn run(&self, entities: &mut Entities, events: &Events) {
         let scripted_entities = entities.get_entities(Components::SCRIPTS);
-        let mut updates: Vec<(usize, Vec<Components>)> = vec![];
+        let mut updates = entities.update();
         for entity in scripted_entities {
             let scripts = component!(&entity[Components::SCRIPTS], Components::Scripts);
             for script in scripts {
                 let updated_components = script.run(&entity, events);
-                updates.push((entity.id, updated_components));
+                updates.set_batch(entity.id(), updated_components);
             }
         }
-        for (e, updated_components) in updates {
-            entities.update_entity_batch(e, updated_components);
-        }
+        entities.commit(updates);
     }
 }
 

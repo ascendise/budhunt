@@ -39,6 +39,30 @@ impl RenderSystem {
             }
         }
     }
+
+    fn get_model(model: &Entity<'_, Components>, entities: &Entities) -> Model {
+        let position = component!(
+            &entities[Components::POSITION][model.id()],
+            Some(Components::Position) or &Default::default()
+        );
+        let mut model = component!(&model[Components::MODEL], Components::Model).clone();
+        model.transform(position);
+        model
+    }
+
+    fn get_light(light: &Entity<'_, Components>, entities: &Entities) -> Light {
+        let position = component!(
+            &entities[Components::POSITION][light.id()],
+            Some(Components::Position) or &Default::default()
+        );
+        let direction = component!(
+            &entities[Components::DIRECTION][light.id()],
+            Some(Components::Direction) or &Default::default()
+        );
+        let mut light = component!(&light[Components::LIGHT], Components::Light).clone();
+        light.transform(position, direction);
+        light
+    }
 }
 impl System for RenderSystem {
     fn run(&self, entities: &mut Entities, events: &Events) {
@@ -46,31 +70,16 @@ impl System for RenderSystem {
         let inputs = events.get_events(|e| event!(e, Event::Input));
         Self::handle_inputs(&inputs, &mut projection);
         let camera = Self::find_camera(entities);
-        let models = entities.get_bucket(Components::MODEL);
-        let positions = entities.get_bucket(Components::POSITION);
-        let directions = entities.get_bucket(Components::DIRECTION);
-        let lights = entities.get_bucket(Components::LIGHT);
-        let mut render_models = vec![];
-        let mut render_lights = vec![];
-        for (m, model) in models.iter().enumerate() {
-            if let Some(Components::Model(model)) = &model {
-                let mut model = model.clone();
-                let position = &positions[m];
-                let position =
-                    component!(position, Some(Components::Position) or &Default::default());
-                model.transform.position = &model.transform.position + position;
-                render_models.push(model);
-            }
-            if let Some(Components::Light(light)) = &lights[m] {
-                let mut light = light.clone();
-                let position =
-                    component!(&positions[m], Some(Components::Position) or &Default::default());
-                let direction =
-                    component!(&directions[m], Some(Components::Direction) or &Default::default());
-                light.transform(position, direction);
-                render_lights.push(light);
-            }
-        }
+        let render_models: Vec<Model> = entities
+            .get_entities(Components::MODEL)
+            .iter()
+            .map(|m| Self::get_model(m, entities))
+            .collect();
+        let render_lights: Vec<Light> = entities
+            .get_entities(Components::LIGHT)
+            .iter()
+            .map(|l| Self::get_light(l, entities))
+            .collect();
         self.renderer
             .render(&projection, &camera, &render_models, &render_lights);
     }
@@ -156,6 +165,11 @@ pub struct Model {
     pub transform: Transform,
     pub vertices: i32,
     pub indices: i32,
+}
+impl Model {
+    pub fn transform(&mut self, position: &math::Vec3) {
+        self.transform.position = &self.transform.position + position;
+    }
 }
 
 pub type Tex = i32;

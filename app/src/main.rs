@@ -1,20 +1,22 @@
 use crate::scripts::MovementScript;
 use ace::{
     component,
-    gfx::{self, Image},
+    gfx::{self},
     math::{self},
     script, vec3,
 };
 use glfw::Context;
-use std::f32;
+use std::{f32, path::PathBuf, thread};
 use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
 mod scripts;
 
-static VERTEX_SHADER_SOURCE: &str = include_str!("../shaders/object.vs.glsl");
-static FRAGMENT_SHADER_SOURCE: &str = include_str!("../shaders/object.fs.glsl");
+static VERTEX_SHADER_PBR: &str = include_str!("../shaders/pbr.vs.glsl");
+static FRAGMENT_SHADER_PBR: &str = include_str!("../shaders/pbr.fs.glsl");
+static VERTEX_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.vs.glsl");
+static FRAGMENT_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.fs.glsl");
 
 fn box_collider(width: f32, height: f32, depth: f32) -> ace::physics::Collider {
     let vertices = vec![
@@ -34,8 +36,9 @@ fn main() {
     let mut glfw = glfw::init(glfw::fail_on_errors).unwrap();
     let window = setup_window(&mut glfw);
     let mut renderer = gfx::opengl::OpenGlRenderer::init();
+    set_skybox(&mut renderer);
     let shader_program = renderer
-        .compile_shader(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE)
+        .compile_shader(VERTEX_SHADER_PBR, FRAGMENT_SHADER_PBR)
         .expect("Failed to compile model shader");
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
@@ -74,6 +77,46 @@ fn setup_window(glfw: &mut glfw::Glfw) -> glfw::PWindow {
     window
 }
 
+fn set_skybox(renderer: &mut gfx::opengl::OpenGlRenderer) {
+    let right = load_image_async(PathBuf::from("./app/skybox/right.jpg"));
+    let left = load_image_async(PathBuf::from("./app/skybox/left.jpg"));
+    let top = load_image_async(PathBuf::from("./app/skybox/top.jpg"));
+    let bottom = load_image_async(PathBuf::from("./app/skybox/bottom.jpg"));
+    let front = load_image_async(PathBuf::from("./app/skybox/front.jpg"));
+    let back = load_image_async(PathBuf::from("./app/skybox/back.jpg"));
+    let textures = gfx::opengl::SkyboxTextures::new(
+        right.join().unwrap(),
+        left.join().unwrap(),
+        top.join().unwrap(),
+        bottom.join().unwrap(),
+        front.join().unwrap(),
+        back.join().unwrap(),
+    );
+    let shader = renderer
+        .compile_shader(VERTEX_SHADER_SKYBOX, FRAGMENT_SHADER_SKYBOX)
+        .unwrap();
+    renderer.set_skybox(textures, shader);
+}
+
+fn load_image_async(path: PathBuf) -> thread::JoinHandle<gfx::Image> {
+    thread::spawn(|| load_image(path))
+}
+
+fn load_image(path: PathBuf) -> gfx::Image {
+    let texture = image::ImageReader::open(&path)
+        .expect("Failed loading texture")
+        .decode()
+        .unwrap();
+    let texture = texture
+        .as_rgb8()
+        .expect("Skybox format is expected to be RGB8!");
+    gfx::Image {
+        data: texture.pixels().flat_map(|p| p.0).collect(),
+        width: texture.width(),
+        height: texture.height(),
+    }
+}
+
 fn create_spotlight(shader_program: u32) -> gfx::Light {
     let spotlight_color = vec3!(1.0, 1.0, 1.0);
     //let spotlight_color = vec3!(1.0, 0.0, 0.0);
@@ -97,8 +140,7 @@ fn spawn_monkeys(
     shader_program: u32,
     entities: &mut ace::Entities,
 ) -> ace::physics::Collider {
-    let specular_map = load_image(Path::new("./app/models/suzanne_specular.png"));
-    let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/suzanne.glb"), &specular_map);
+    let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/Suzanne.glb"));
     let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
     let monkeys = [
         vec3!(0.0, 0.0, 0.0),
@@ -133,8 +175,8 @@ fn spawn_point_lights(
     shader_program: u32,
     entities: &mut ace::Entities,
 ) {
-    let light_mesh = gfx::load_glb_file(Path::new("./app/models/light.glb"), &Image::empty());
-    let point_light = create_point_light(renderer, &light_mesh, shader_program);
+    let light_mesh = gfx::load_glb_file(Path::new("./app/models/Light.glb"));
+    let model = renderer.load_mesh(&light_mesh, shader_program);
     let point_lights = [
         vec3!(0.7, 0.2, 2.0),
         vec3!(2.3, -3.3, -4.0),
@@ -151,31 +193,19 @@ fn spawn_point_lights(
     });
     let move_script = Box::new(move_script);
     for position in point_lights {
-        let light = gfx::Light::Point(point_light.clone());
+        let light = create_point_light(position.clone(), model.clone());
+        let light = gfx::Light::Point(light);
         let light = ace::Components::Light(light);
         let position = ace::Components::Position(position);
         let script = ace::Components::Scripts(vec![move_script.clone()]);
         entities.create_entity(vec![light, position, script]);
     }
 }
-fn create_point_light(
-    renderer: &mut gfx::opengl::OpenGlRenderer,
-    mesh: &gfx::Mesh,
-    shader: u32,
-) -> gfx::PointLight {
-    let light_color = vec3!(1.0, 1.0, 1.0);
-    let model = renderer.load_mesh(mesh, shader);
-    let color = gfx::Material {
-        ambient: &vec3!(0.5, 0.5, 0.5) * &light_color,
-        diffuse: &vec3!(0.2, 0.2, 0.2) * &light_color,
-        specular: &vec3!(1.0, 1.0, 1.0) * &light_color,
-    };
+fn create_point_light(position: math::Vec3, model: gfx::Model) -> gfx::PointLight {
     gfx::PointLight {
         model,
-        color,
-        constant: 1.0,
-        linear: 0.09,
-        quadratic: 0.032,
+        color: vec3!(1.0, 1.0, 1.0) * 10.0,
+        position,
     }
 }
 
@@ -183,12 +213,8 @@ fn spawn_sun(shader_program: u32, entities: &mut ace::Entities) {
     let sun_color = vec3!(1.0, 1.0, 1.0);
     let dir_light = gfx::DirectionalLight {
         shader: shader_program,
+        color: sun_color,
         direction: vec3!(-0.2, -1.0, -0.3),
-        material: gfx::Material {
-            ambient: &vec3!(0.2, 0.2, 0.2) * &sun_color,
-            diffuse: &vec3!(0.5, 0.5, 0.5) * &sun_color,
-            specular: &vec3!(1.0, 1.0, 1.0) * &sun_color,
-        },
     };
     let dir_light = ace::Components::Light(gfx::Light::Directional(dir_light));
     entities.create_entity(vec![dir_light]);
@@ -199,8 +225,7 @@ fn spawn_floor(
     shader_program: u32,
     entities: &mut ace::Entities,
 ) {
-    let plane_specular = load_image(Path::new("./app/models/plane_specular.png"));
-    let mut plane_mesh = gfx::load_glb_file(Path::new("./app/models/plane.glb"), &plane_specular);
+    let mut plane_mesh = gfx::load_glb_file(Path::new("./app/models/Plane.glb"));
     // Scale / Move model programatically
     plane_mesh.vertices = plane_mesh
         .vertices
@@ -228,26 +253,13 @@ fn spawn_player(
     let flashlight = create_spotlight(shader_program);
     entities.create_entity(vec![
         ace::Components::Light(flashlight),
-        ace::Components::Position(vec3!(0.0, 0.0, -100.0)),
+        ace::Components::Position(vec3!(0.0, 0.0, -50.0)),
         ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
         ace::Components::Scripts(vec![Box::new(MovementScript::new(clock))]),
         ace::Components::Player,
         ace::Components::Collider(collider),
         ace::Components::RigidBody(ace::physics::RigidBody::new(vec3!(0.0))),
     ]);
-}
-
-fn load_image(path: &Path) -> gfx::Image {
-    let texture = image::ImageReader::open(path)
-        .expect("Failed loading texture")
-        .decode()
-        .unwrap();
-    let texture = texture.into_rgba8();
-    gfx::Image {
-        data: texture.pixels().flat_map(|p| p.0).collect(),
-        width: texture.width(),
-        height: texture.height(),
-    }
 }
 
 fn setup_world(

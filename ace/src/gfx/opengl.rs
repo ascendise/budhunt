@@ -9,7 +9,8 @@ use std::{
 use crate::{gfx::*, vec4};
 
 pub struct OpenGlRenderer {
-    textures: u32,
+    texture_count: u32,
+    skybox: Option<Skybox>,
 }
 
 impl OpenGlRenderer {
@@ -18,7 +19,10 @@ impl OpenGlRenderer {
             gl::ClearColor(0.25, 0.25, 0.25, 1.0);
             gl::Enable(gl::DEPTH_TEST);
         }
-        Self { textures: 0 }
+        Self {
+            texture_count: 0,
+            skybox: None,
+        }
     }
 
     pub fn set_polygon_mode(&self, mode: gl::types::GLenum) {
@@ -28,22 +32,23 @@ impl OpenGlRenderer {
     }
 
     pub fn load_mesh(&mut self, mesh: &Mesh, shader: Shader) -> Model {
-        let diffuse = self.new_tex();
-        self.set_texture(diffuse, &mesh.diffuse);
-        let specular = self.new_tex();
-        self.set_texture(specular, &mesh.specular);
-        let emission = self.new_tex();
-        self.set_texture(emission, &mesh.emission);
+        let albedo = self.new_tex();
+        self.set_texture(albedo, &mesh.albedo, gl::RGBA8 as i32, gl::RGBA);
+        let metallic_roughness_ao = self.new_tex();
+        self.set_texture(
+            metallic_roughness_ao,
+            &mesh.metallic_roughness_ao,
+            gl::RGB8 as i32,
+            gl::RGB,
+        );
         let vao = self.set_mesh_vao(mesh);
         Model {
             vao,
             indices: mesh.indices.len() as i32,
             shader,
             material: Texture {
-                diffuse: diffuse as i32,
-                specular: specular as i32,
-                emission: emission as i32,
-                shininess: mesh.shininess,
+                albedo: albedo as i32,
+                metallic_roughness_ao: metallic_roughness_ao as i32,
             },
             transform: Transform::default(),
             vertices: mesh.vertices.len() as i32,
@@ -51,8 +56,8 @@ impl OpenGlRenderer {
     }
 
     fn new_tex(&mut self) -> u32 {
-        self.textures += 1;
-        self.textures
+        self.texture_count += 1;
+        self.texture_count
     }
 
     fn set_mesh_vao(&self, mesh: &Mesh) -> u32 {
@@ -113,7 +118,13 @@ impl OpenGlRenderer {
         vertex_array
     }
 
-    fn set_texture(&self, unit: u32, image: &Image) {
+    fn set_texture(
+        &self,
+        unit: u32,
+        image: &Image,
+        internal_format: gl::types::GLint,
+        format: gl::types::GLenum,
+    ) {
         let texture_unit = gl::TEXTURE0 + unit;
         let mut texture = 0;
         unsafe {
@@ -123,11 +134,11 @@ impl OpenGlRenderer {
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,
-                gl::RGB as i32,
+                internal_format,
                 image.width as i32,
                 image.height as i32,
                 0,
-                gl::RGBA,
+                format,
                 gl::UNSIGNED_BYTE,
                 image.data.as_ptr() as *const _,
             );
@@ -191,6 +202,167 @@ impl OpenGlRenderer {
             Ok(shader)
         }
     }
+
+    pub fn set_skybox(&mut self, skybox: SkyboxTextures, shader: Shader) {
+        Self::bind_skybox_textures(skybox);
+        let mut vertex_array = 0;
+        unsafe {
+            gl::GenVertexArrays(1, &mut vertex_array);
+            gl::BindVertexArray(vertex_array);
+            let mut buffer_object = 0;
+            gl::GenBuffers(1, &mut buffer_object);
+            gl::BindBuffer(gl::ARRAY_BUFFER, buffer_object);
+            let mesh_size = (size_of::<math::Vec3>() * Skybox::VERTICES.len()) as isize;
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                mesh_size,
+                Skybox::VERTICES.as_ptr() as *const _,
+                gl::STATIC_DRAW,
+            );
+            gl::VertexAttribPointer(
+                0,
+                3,
+                gl::FLOAT,
+                gl::FALSE,
+                size_of::<math::Vec3>() as i32,
+                null() as *const _,
+            );
+            gl::EnableVertexAttribArray(0);
+        };
+        let skybox = Skybox {
+            vao: vertex_array,
+            shader,
+        };
+        self.skybox = Some(skybox);
+    }
+
+    fn bind_skybox_textures(skybox: SkyboxTextures) {
+        let mut texture = 0;
+        unsafe {
+            gl::GenTextures(1, &mut texture);
+            gl::BindTexture(gl::TEXTURE_CUBE_MAP, texture);
+            for (i, image) in skybox.textures.iter().enumerate() {
+                let side = gl::TEXTURE_CUBE_MAP_POSITIVE_X + (i as u32);
+                gl::TexImage2D(
+                    side,
+                    0,
+                    gl::RGB as i32,
+                    image.width as i32,
+                    image.height as i32,
+                    0,
+                    gl::RGB,
+                    gl::UNSIGNED_BYTE,
+                    image.data.as_ptr() as *const _,
+                );
+            }
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_MIN_FILTER,
+                gl::LINEAR as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_MAG_FILTER,
+                gl::LINEAR as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_WRAP_S,
+                gl::CLAMP_TO_EDGE as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_WRAP_T,
+                gl::CLAMP_TO_EDGE as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_WRAP_R,
+                gl::CLAMP_TO_EDGE as i32,
+            );
+        }
+    }
+
+    fn render_skybox(&self, projection: &math::Matrix4, view: &math::Matrix4) {
+        let view: math::Matrix4 = [
+            [view[0][0], view[0][1], view[0][2], 0.0],
+            [view[1][0], view[1][1], view[1][2], 0.0],
+            [view[2][0], view[2][1], view[2][2], 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+        .into();
+        if let Some(skybox) = &self.skybox {
+            gl_bind_vao(skybox.vao);
+            gl_use_program(skybox.shader);
+            gl_matrix_uniform(skybox.shader, projection, "uProjection");
+            gl_matrix_uniform(skybox.shader, &view, "uView");
+            gl_depth_func(gl::LEQUAL);
+            gl_draw_array(Skybox::VERTICES.len() as i32);
+            gl_depth_func(gl::LESS);
+        }
+    }
+}
+
+pub struct SkyboxTextures {
+    pub textures: [Image; 6],
+}
+impl SkyboxTextures {
+    pub fn new(
+        right: gfx::Image,
+        left: gfx::Image,
+        top: gfx::Image,
+        bottom: gfx::Image,
+        front: gfx::Image,
+        back: gfx::Image,
+    ) -> Self {
+        Self {
+            textures: [right, left, top, bottom, front, back],
+        }
+    }
+}
+pub struct Skybox {
+    vao: VertexArray,
+    shader: Shader,
+}
+impl Skybox {
+    pub const VERTICES: [math::Vec3; 36] = [
+        vec3!(-1.0, 1.0, -1.0),
+        vec3!(-1.0, -1.0, -1.0),
+        vec3!(1.0, -1.0, -1.0),
+        vec3!(1.0, -1.0, -1.0),
+        vec3!(1.0, 1.0, -1.0),
+        vec3!(-1.0, 1.0, -1.0),
+        vec3!(-1.0, -1.0, 1.0),
+        vec3!(-1.0, -1.0, -1.0),
+        vec3!(-1.0, 1.0, -1.0),
+        vec3!(-1.0, 1.0, -1.0),
+        vec3!(-1.0, 1.0, 1.0),
+        vec3!(-1.0, -1.0, 1.0),
+        vec3!(1.0, -1.0, -1.0),
+        vec3!(1.0, -1.0, 1.0),
+        vec3!(1.0, 1.0, 1.0),
+        vec3!(1.0, 1.0, 1.0),
+        vec3!(1.0, 1.0, -1.0),
+        vec3!(1.0, -1.0, -1.0),
+        vec3!(-1.0, -1.0, 1.0),
+        vec3!(-1.0, 1.0, 1.0),
+        vec3!(1.0, 1.0, 1.0),
+        vec3!(1.0, 1.0, 1.0),
+        vec3!(1.0, -1.0, 1.0),
+        vec3!(-1.0, -1.0, 1.0),
+        vec3!(-1.0, 1.0, -1.0),
+        vec3!(1.0, 1.0, -1.0),
+        vec3!(1.0, 1.0, 1.0),
+        vec3!(1.0, 1.0, 1.0),
+        vec3!(-1.0, 1.0, 1.0),
+        vec3!(-1.0, 1.0, -1.0),
+        vec3!(-1.0, -1.0, -1.0),
+        vec3!(-1.0, -1.0, 1.0),
+        vec3!(1.0, -1.0, -1.0),
+        vec3!(1.0, -1.0, -1.0),
+        vec3!(-1.0, -1.0, 1.0),
+        vec3!(1.0, -1.0, 1.0),
+    ];
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -242,6 +414,7 @@ impl Renderer for OpenGlRenderer {
                 render(model);
             }
         }
+        self.render_skybox(&projection, &view);
     }
 }
 
@@ -275,10 +448,12 @@ fn calculate_model_matrix(transform: &Transform) -> math::Matrix4 {
 }
 
 fn gl_material_uniform(shader: Shader, texture: &Texture) {
-    gl_int_uniform(shader, texture.diffuse, "uMaterial.diffuse");
-    gl_int_uniform(shader, texture.specular, "uMaterial.specular");
-    gl_int_uniform(shader, texture.emission, "uMaterial.emission");
-    gl_float_uniform(shader, texture.shininess, "uMaterial.shininess");
+    gl_int_uniform(shader, texture.albedo, "uMaterial.albedo");
+    gl_int_uniform(
+        shader,
+        texture.metallic_roughness_ao,
+        "uMaterial.metallicRoughnessAo",
+    );
 }
 
 fn gl_int_uniform(shader: Shader, value: i32, key: &str) {
@@ -299,7 +474,7 @@ fn gl_float_uniform(shader: Shader, value: f32, key: &str) {
 fn gl_dirlight_uniform(key: i32, shader: Shader, light: &DirectionalLight) {
     let key = &format!("uDirectionalLights[{key}]");
     gl_vec3_uniform(shader, &light.direction, &subkey(key, "direction"));
-    gl_light_uniform(shader, &light.material, &subkey(key, "light"));
+    gl_vec3_uniform(shader, &light.color, &subkey(key, "color"));
 }
 fn to_view_space(view: &math::Matrix4, vec: &math::Vec3, w: f32) -> math::Vec3 {
     let res = view * &vec4!(vec.x, vec.y, vec.z, w);
@@ -323,12 +498,9 @@ fn gl_vec3_uniform(shader: Shader, value: &math::Vec3, key: &str) {
 
 fn gl_pointlight_uniform(key: i32, shader: Shader, light: &PointLight, view: &math::Matrix4) {
     let key = &format!("uPointLights[{key}]");
-    let position = to_view_space(view, &light.model.transform.position, 1.0);
-    gl_float_uniform(shader, light.constant, &subkey(key, "constant"));
-    gl_float_uniform(shader, light.linear, &subkey(key, "linear"));
-    gl_float_uniform(shader, light.quadratic, &subkey(key, "quadratic"));
+    let position = to_view_space(view, &light.position, 1.0);
+    gl_vec3_uniform(shader, &light.color, &subkey(key, "color"));
     gl_vec3_uniform(shader, &position, &subkey(key, "position"));
-    gl_light_uniform(shader, &light.color, &subkey(key, "light"));
 }
 
 fn gl_spotlight_uniform(key: i32, shader: Shader, light: &SpotLight, view: &math::Matrix4) {
@@ -340,6 +512,12 @@ fn gl_spotlight_uniform(key: i32, shader: Shader, light: &SpotLight, view: &math
     gl_float_uniform(shader, light.inner_cutoff, &subkey(key, "cutoff"));
     gl_float_uniform(shader, light.outer_cutoff, &subkey(key, "outerCutoff"));
     gl_light_uniform(shader, &light.material, &subkey(key, "light"));
+}
+
+fn gl_depth_func(comparator: u32) {
+    unsafe {
+        gl::DepthFunc(comparator);
+    }
 }
 
 fn render(model: &Model) {

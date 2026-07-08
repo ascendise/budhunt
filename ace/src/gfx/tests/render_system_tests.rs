@@ -31,10 +31,8 @@ pub fn render_should_pass_objects_to_renderer() {
         vao: 123,
         shader: 123,
         material: Texture {
-            diffuse: 0,
-            specular: 0,
-            emission: 0,
-            shininess: 32.0,
+            albedo: 0,
+            metallic_roughness_ao: 0,
         },
         transform: Default::default(),
         vertices: 3,
@@ -44,11 +42,7 @@ pub fn render_should_pass_objects_to_renderer() {
     let expected_light = DirectionalLight {
         shader: 123,
         direction: vec3!(0.0, -1.0, 0.0),
-        material: Material {
-            ambient: vec3!(1.0),
-            diffuse: vec3!(1.0),
-            specular: vec3!(1.0),
-        },
+        color: vec3!(1.0),
     };
     let expected_light = Light::Directional(expected_light);
     entities.create_entity(vec![Components::Light(expected_light.clone())]);
@@ -75,10 +69,8 @@ pub fn render_should_transform_models_with_position() {
         vao: 123,
         shader: 123,
         material: Texture {
-            diffuse: 0,
-            specular: 0,
-            emission: 0,
-            shininess: 32.0,
+            albedo: 0,
+            metallic_roughness_ao: 0,
         },
         transform: Transform {
             position: vec3!(1.0),

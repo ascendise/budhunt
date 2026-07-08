@@ -84,44 +84,6 @@ impl System for RenderSystem {
             .render(&projection, &camera, &render_models, &render_lights);
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct Mesh {
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<Index>,
-    pub diffuse: Image,
-    pub specular: Image,
-    pub emission: Image,
-    pub shininess: f32,
-}
-
-#[derive(Debug, Clone)]
-pub struct Vertex {
-    pub position: math::Vec3,
-    pub normal: math::Vec3,
-    pub texture: math::Vec2,
-}
-
-/// Vertex index
-pub type Index = u32;
-
-#[derive(Debug, Clone)]
-pub struct Image {
-    pub data: Vec<u8>,
-    pub width: u32,
-    pub height: u32,
-}
-const EMPTY_IMAGE: Image = Image {
-    data: vec![],
-    width: 0,
-    height: 0,
-};
-impl Image {
-    pub const fn empty() -> Self {
-        EMPTY_IMAGE
-    }
-}
-
 pub trait Renderer {
     fn render(&self, projection: &Projection, camera: &Camera, model: &[Model], lights: &[Light]);
 }
@@ -175,10 +137,8 @@ impl Model {
 pub type Tex = i32;
 #[derive(PartialEq, Debug, Clone)]
 pub struct Texture {
-    pub diffuse: Tex,
-    pub specular: Tex,
-    pub emission: Tex,
-    pub shininess: f32,
+    albedo: Tex,
+    metallic_roughness_ao: Tex,
 }
 
 #[derive(PartialEq, Debug, Clone, Default)]
@@ -216,17 +176,15 @@ pub struct Material {
 #[derive(Debug, PartialEq, Clone)]
 pub struct DirectionalLight {
     pub shader: Shader,
+    pub color: math::Vec3,
     pub direction: math::Vec3,
-    pub material: Material,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct PointLight {
     pub model: Model,
-    pub color: Material,
-    pub constant: f32,
-    pub linear: f32,
-    pub quadratic: f32,
+    pub color: math::Vec3,
+    pub position: math::Vec3,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -241,12 +199,11 @@ pub struct SpotLight {
     pub material: Material,
 }
 
-pub fn load_glb_file(gltf_path: &std::path::Path, specular: &Image) -> Mesh {
+pub fn load_glb_file(gltf_path: &std::path::Path) -> Mesh {
     let (document, buffers, images) = gltf::import(gltf_path).unwrap();
     for scene in document.scenes() {
         for node in scene.nodes() {
-            if let Some(mut mesh) = get_mesh(&node, &buffers, &images) {
-                mesh.specular = specular.clone();
+            if let Some(mesh) = get_mesh(&node, &buffers, &images) {
                 return mesh;
             }
         }
@@ -268,12 +225,43 @@ fn get_mesh(
         .expect("No positions found")
         .collect();
     let normals: Vec<[f32; 3]> = reader.read_normals().expect("No normals found").collect();
-    let material = primitive.material();
     let tex_coords: Vec<[f32; 2]> = reader
         .read_tex_coords(0)
         .expect("Missing tex coords")
         .into_f32()
         .collect();
+    let vertices = read_vertices(positions, normals, tex_coords);
+    let indices: Vec<u32> = reader
+        .read_indices()
+        .expect("No indices found")
+        .into_u32()
+        .collect();
+    let material = primitive.material();
+    let pbr = material.pbr_metallic_roughness();
+    let albedo = pbr
+        .base_color_texture()
+        .expect("no albedo texture found")
+        .texture();
+    let albedo = read_texture(images, albedo);
+    let metallic_roughness_ao = pbr
+        .metallic_roughness_texture()
+        .expect("no metallic-roughness texture found")
+        .texture();
+    let metallic_roughness_ao = read_texture(images, metallic_roughness_ao);
+    let mesh = Mesh {
+        vertices,
+        indices,
+        albedo,
+        metallic_roughness_ao,
+    };
+    Some(mesh)
+}
+
+fn read_vertices(
+    positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    tex_coords: Vec<[f32; 2]>,
+) -> Vec<Vertex> {
     let mut vertices = Vec::new();
     for (p, position) in positions.iter().enumerate() {
         let normal = normals[p];
@@ -285,47 +273,49 @@ fn get_mesh(
         };
         vertices.push(vertex);
     }
-    let indices: Vec<u32> = reader
-        .read_indices()
-        .expect("No indices found")
-        .into_u32()
-        .collect();
-    let diffuse = match material.pbr_metallic_roughness().base_color_texture() {
-        Some(texture) => {
-            let diffuse = &images[texture.texture().index()];
-            Image {
-                data: diffuse.pixels.clone(),
-                width: diffuse.width,
-                height: diffuse.height,
-            }
-        }
-        None => {
-            println!("INFO: No base color texture found");
-            Image::empty()
-        }
-    };
-    let emission = match material.emissive_texture() {
-        Some(texture) => {
-            let index = texture.texture().index();
-            let image = &images[index];
-            Image {
-                data: image.pixels.clone(),
-                width: image.width,
-                height: image.height,
-            }
-        }
-        None => {
-            println!("INFO: No emission texture found");
-            Image::empty()
-        }
-    };
-    let mesh = Mesh {
-        vertices,
-        indices,
-        diffuse,
-        specular: Image::empty(),
-        emission,
-        shininess: 32.0,
-    };
-    Some(mesh)
+    vertices
+}
+
+fn read_texture(images: &[gltf::image::Data], texture: gltf::Texture<'_>) -> Image {
+    let texture = &images[texture.index()];
+    Image {
+        data: texture.pixels.clone(),
+        width: texture.width,
+        height: texture.height,
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Mesh {
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<Index>,
+    pub albedo: Image,
+    pub metallic_roughness_ao: Image,
+}
+
+#[derive(Debug, Clone)]
+pub struct Vertex {
+    pub position: math::Vec3,
+    pub normal: math::Vec3,
+    pub texture: math::Vec2,
+}
+
+/// Vertex index
+pub type Index = u32;
+
+#[derive(Debug, Clone)]
+pub struct Image {
+    pub data: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+const EMPTY_IMAGE: Image = Image {
+    data: vec![],
+    width: 0,
+    height: 0,
+};
+impl Image {
+    pub const fn empty() -> Self {
+        EMPTY_IMAGE
+    }
 }

@@ -39,12 +39,12 @@ pub fn render_should_pass_objects_to_renderer() {
         indices: 3,
     };
     entities.create_entity(vec![Components::Model(expected_model.clone())]);
-    let expected_light = DirectionalLight {
-        shader: 123,
-        direction: vec3!(0.0, -1.0, 0.0),
+    let expected_light = PointLight {
+        model: expected_model.clone(),
         color: vec3!(1.0),
+        position: vec3!(1.0),
     };
-    let expected_light = Light::Directional(expected_light);
+    let expected_light = Light::Point(expected_light);
     entities.create_entity(vec![Components::Light(expected_light.clone())]);
     // Act
     sut.run(&mut entities, &Events::empty());

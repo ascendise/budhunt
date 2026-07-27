@@ -12,7 +12,23 @@ pub struct OpenGlRenderer {
     texture_count: u32,
     skybox: Option<Skybox>,
 }
-
+impl Renderer for OpenGlRenderer {
+    fn render(&self, projection: &Projection, camera: &Camera, models: &[Model], lights: &[Light]) {
+        unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT) };
+        let projection = &projection.to_projection_matrix();
+        let view = &camera.to_view_matrix();
+        let skybox = self.skybox.as_ref().expect("No skybox set!");
+        let shader = ModelShader {
+            projection,
+            view,
+            models,
+            lights,
+            skybox,
+        };
+        shader.render();
+        self.render_skybox(projection, view);
+    }
+}
 impl OpenGlRenderer {
     pub fn init() -> Self {
         unsafe {
@@ -295,37 +311,142 @@ impl OpenGlRenderer {
         ]
         .into();
         if let Some(skybox) = &self.skybox {
-            gl_bind_vao(skybox.vao);
-            gl_use_program(skybox.shader);
-            gl_int_uniform(skybox.shader, skybox.image, "uSkybox");
-            gl_int_uniform(skybox.shader, skybox.specular, "uPrefilterMap");
-            gl_matrix_uniform(skybox.shader, projection, "uProjection");
-            gl_matrix_uniform(skybox.shader, &view, "uView");
-            gl_depth_func(gl::LEQUAL);
-            gl_draw_array(Skybox::VERTICES.len() as i32);
-            gl_depth_func(gl::LESS);
+            let skybox_shader = SkyboxShader {
+                view: &view,
+                projection,
+                skybox,
+            };
+            skybox_shader.render();
         }
     }
 }
 
-pub struct SkyboxTextures {
-    pub textures: [Image; 6],
+pub trait OpenGlShader {
+    fn render(&self);
 }
-impl SkyboxTextures {
-    pub fn new(
-        right: gfx::Image,
-        left: gfx::Image,
-        top: gfx::Image,
-        bottom: gfx::Image,
-        front: gfx::Image,
-        back: gfx::Image,
-    ) -> Self {
-        Self {
-            textures: [right, left, top, bottom, front, back],
+pub struct SkyboxShader<'a> {
+    view: &'a math::Matrix4,
+    projection: &'a math::Matrix4,
+    skybox: &'a Skybox,
+}
+impl<'a> OpenGlShader for SkyboxShader<'a> {
+    fn render(&self) {
+        unsafe {
+            let shader = self.skybox.shader;
+            gl::BindVertexArray(self.skybox.vao);
+            gl::UseProgram(shader);
+            gl_int_uniform(shader, self.skybox.image, "uSkybox");
+            gl_matrix_uniform(shader, self.view, "uView");
+            gl_matrix_uniform(shader, self.projection, "uProjection");
+            gl::DepthFunc(gl::LEQUAL);
+            gl::DrawArrays(gl::TRIANGLES, 0, Skybox::VERTICES.len() as i32);
+            gl::DepthFunc(gl::LESS);
         }
     }
 }
-#[derive(Debug)]
+pub struct ModelShader<'a> {
+    projection: &'a math::Matrix4,
+    view: &'a math::Matrix4,
+    models: &'a [Model],
+    lights: &'a [Light],
+    skybox: &'a Skybox,
+}
+impl<'a> ModelShader<'a> {
+    fn create_model_matrix(transform: &Transform) -> math::Matrix4 {
+        let translation = math::Matrix4::translation(&transform.position);
+        let rotation = math::rotation(&transform.rotation);
+        translation * rotation
+    }
+
+    fn create_normal_matrix(model: &math::Matrix4, view: &math::Matrix4) -> math::Matrix4 {
+        (model * view).inverse().transpose()
+    }
+
+    fn set_model_uniforms(&self, model: &Model) {
+        gl_matrix_uniform(model.shader, self.projection, "uProjection");
+        gl_matrix_uniform(model.shader, self.view, "uView");
+        let model_matrix = Self::create_model_matrix(&model.transform);
+        gl_matrix_uniform(model.shader, &model_matrix, "uModel");
+        let normal_matrix = Self::create_normal_matrix(&model_matrix, self.view);
+        gl_matrix_uniform(model.shader, &normal_matrix, "uNormal");
+        gl_int_uniform(model.shader, model.material.albedo, "uMaterial.albedo");
+        gl_int_uniform(
+            model.shader,
+            model.material.metallic_roughness_ao,
+            "uMaterial.metallicRoughnessAo",
+        );
+    }
+
+    fn set_skybox_uniforms(&self, model: &Model) {
+        gl_int_uniform(model.shader, self.skybox.diffuse, "uIrradianceMap");
+        gl_int_uniform(model.shader, self.skybox.specular, "uPrefilterMap");
+        gl_int_uniform(model.shader, self.skybox.brdf_lut, "uBrdfLut");
+    }
+}
+impl<'a> OpenGlShader for ModelShader<'a> {
+    fn render(&self) {
+        unsafe {
+            for model in self.models {
+                gl::BindVertexArray(model.vao);
+                gl::UseProgram(model.shader);
+                self.set_model_uniforms(model);
+                self.set_skybox_uniforms(model);
+                let mut point_count = 0;
+                for light in self.lights {
+                    match light {
+                        Light::Point(light) => {
+                            let key = &format!("uPointLights[{point_count}]");
+                            gl_vec3_uniform(model.shader, &light.color, &subkey(key, "color"));
+                            gl_vec3_uniform(
+                                model.shader,
+                                &to_view_space(self.view, &light.position, 1.0),
+                                &subkey(key, "position"),
+                            );
+                            point_count += 1;
+                        }
+                    }
+                }
+                gl_int_uniform(model.shader, point_count, "uPointLightsSize");
+                if model.indices > 0 {
+                    gl::DrawElements(gl::TRIANGLES, model.indices, gl::UNSIGNED_INT, null());
+                } else {
+                    gl::DrawArrays(gl::TRIANGLES, 0, model.vertices);
+                }
+            }
+        }
+    }
+}
+
+fn gl_matrix_uniform(shader: Shader, matrix: &math::Matrix4, key: &str) {
+    let location = gl_get_uniform_location(shader, key);
+    unsafe { gl::UniformMatrix4fv(location, 1, gl::TRUE, matrix.data.as_ptr() as *const _) }
+}
+
+fn gl_vec3_uniform(shader: Shader, value: &math::Vec3, key: &str) {
+    let location = gl_get_uniform_location(shader, key);
+    unsafe { gl::Uniform3f(location, value.x, value.y, value.z) }
+}
+
+fn gl_int_uniform(shader: Shader, value: i32, key: &str) {
+    let location = gl_get_uniform_location(shader, key);
+    unsafe { gl::Uniform1i(location, value) }
+}
+
+fn gl_get_uniform_location(shader: Shader, key: &str) -> gl::types::GLint {
+    let key = CString::new(key).unwrap();
+    unsafe { gl::GetUniformLocation(shader, key.as_ptr()) }
+}
+
+fn subkey(key: &str, subkey: &str) -> String {
+    format!("{key}.{subkey}")
+}
+
+fn to_view_space(view: &math::Matrix4, vec: &math::Vec3, w: f32) -> math::Vec3 {
+    let res = view * &vec4!(vec.x, vec.y, vec.z, w);
+    vec3!(res.x, res.y, res.z)
+}
+
+#[derive(Debug, Clone)]
 pub struct Skybox {
     vao: VertexArray,
     shader: Shader,
@@ -384,172 +505,4 @@ impl Display for OpenGlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.err)
     }
-}
-
-impl Renderer for OpenGlRenderer {
-    fn render(&self, projection: &Projection, camera: &Camera, models: &[Model], lights: &[Light]) {
-        unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT) };
-        let projection = projection.to_projection_matrix();
-        let view = camera.to_view_matrix();
-        let skybox = self.skybox.as_ref().expect("No skybox set!");
-        for model in models {
-            set_model_uniforms(&projection, &view, model);
-            gl_int_uniform(model.shader, skybox.diffuse, "uIrradianceMap");
-            gl_int_uniform(model.shader, skybox.specular, "uPrefilterMap");
-            gl_int_uniform(model.shader, skybox.brdf_lut, "uBrdfLut");
-            let mut dir_count = 0;
-            let mut point_count = 0;
-            let mut spot_count = 0;
-            for light in lights {
-                match light {
-                    Light::Directional(l) => {
-                        gl_dirlight_uniform(dir_count, model.shader, l);
-                        dir_count += 1;
-                    }
-                    Light::Point(l) => {
-                        gl_pointlight_uniform(point_count, model.shader, l, &view);
-                        point_count += 1;
-                    }
-                    Light::Spot(l) => {
-                        gl_spotlight_uniform(spot_count, model.shader, l, &view);
-                        spot_count += 1;
-                    }
-                }
-            }
-            gl_int_uniform(model.shader, dir_count, "uDirectionalLightsSize");
-            gl_int_uniform(model.shader, point_count, "uPointLightsSize");
-            gl_int_uniform(model.shader, spot_count, "uSpotLightsSize");
-            render(model);
-        }
-        //for light in lights {
-        //    if let Light::Point(light) = light {
-        //        let model = &light.model;
-        //        set_model_uniforms(&projection, &view, model);
-        //        render(model);
-        //    }
-        //}
-        self.render_skybox(&projection, &view);
-    }
-}
-
-fn set_model_uniforms(projection: &math::Matrix4, view: &math::Matrix4, model: &Model) {
-    gl_bind_vao(model.vao);
-    gl_use_program(model.shader);
-    gl_matrix_uniform(model.shader, projection, "uProjection");
-    gl_matrix_uniform(model.shader, view, "uView");
-    let model_matrix = calculate_model_matrix(&model.transform);
-    gl_matrix_uniform(model.shader, &model_matrix, "uModel");
-    let normal = (&model_matrix * view).inverse().transpose();
-    gl_matrix_uniform(model.shader, &normal, "uNormal");
-    gl_material_uniform(model.shader, &model.material);
-}
-
-fn gl_use_program(shader: Shader) {
-    unsafe {
-        gl::UseProgram(shader);
-    }
-}
-
-fn gl_matrix_uniform(shader: Shader, matrix: &math::Matrix4, key: &str) {
-    let location = gl_get_uniform_location(shader, key);
-    unsafe { gl::UniformMatrix4fv(location, 1, gl::TRUE, matrix.data.as_ptr() as *const _) }
-}
-
-fn calculate_model_matrix(transform: &Transform) -> math::Matrix4 {
-    let translation = math::Matrix4::translation(&transform.position);
-    let rotation = math::rotation(&transform.rotation);
-    translation * rotation
-}
-
-fn gl_material_uniform(shader: Shader, texture: &Texture) {
-    gl_int_uniform(shader, texture.albedo, "uMaterial.albedo");
-    gl_int_uniform(
-        shader,
-        texture.metallic_roughness_ao,
-        "uMaterial.metallicRoughnessAo",
-    );
-}
-
-fn gl_int_uniform(shader: Shader, value: i32, key: &str) {
-    let location = gl_get_uniform_location(shader, key);
-    unsafe { gl::Uniform1i(location, value) }
-}
-
-fn gl_get_uniform_location(shader: Shader, key: &str) -> gl::types::GLint {
-    let key = CString::new(key).unwrap();
-    unsafe { gl::GetUniformLocation(shader, key.as_ptr()) }
-}
-
-fn gl_float_uniform(shader: Shader, value: f32, key: &str) {
-    let location = gl_get_uniform_location(shader, key);
-    unsafe { gl::Uniform1f(location, value) }
-}
-
-fn gl_dirlight_uniform(key: i32, shader: Shader, light: &DirectionalLight) {
-    let key = &format!("uDirectionalLights[{key}]");
-    gl_vec3_uniform(shader, &light.direction, &subkey(key, "direction"));
-    gl_vec3_uniform(shader, &light.color, &subkey(key, "color"));
-}
-fn to_view_space(view: &math::Matrix4, vec: &math::Vec3, w: f32) -> math::Vec3 {
-    let res = view * &vec4!(vec.x, vec.y, vec.z, w);
-    vec3!(res.x, res.y, res.z)
-}
-
-fn gl_light_uniform(shader: Shader, light: &Material, key: &str) {
-    gl_vec3_uniform(shader, &light.ambient, &subkey(key, "ambient"));
-    gl_vec3_uniform(shader, &light.diffuse, &subkey(key, "diffuse"));
-    gl_vec3_uniform(shader, &light.specular, &subkey(key, "specular"));
-}
-
-fn subkey(key: &str, subkey: &str) -> String {
-    format!("{key}.{subkey}")
-}
-
-fn gl_vec3_uniform(shader: Shader, value: &math::Vec3, key: &str) {
-    let location = gl_get_uniform_location(shader, key);
-    unsafe { gl::Uniform3f(location, value.x, value.y, value.z) }
-}
-
-fn gl_pointlight_uniform(key: i32, shader: Shader, light: &PointLight, view: &math::Matrix4) {
-    let key = &format!("uPointLights[{key}]");
-    let position = to_view_space(view, &light.position, 1.0);
-    gl_vec3_uniform(shader, &light.color, &subkey(key, "color"));
-    gl_vec3_uniform(shader, &position, &subkey(key, "position"));
-}
-
-fn gl_spotlight_uniform(key: i32, shader: Shader, light: &SpotLight, view: &math::Matrix4) {
-    let key = &format!("uSpotLights[{key}]");
-    let position = to_view_space(view, &light.position, 1.0);
-    let direction = to_view_space(view, &light.direction, 0.0);
-    gl_vec3_uniform(shader, &position, &subkey(key, "position"));
-    gl_vec3_uniform(shader, &direction, &subkey(key, "direction"));
-    gl_float_uniform(shader, light.inner_cutoff, &subkey(key, "cutoff"));
-    gl_float_uniform(shader, light.outer_cutoff, &subkey(key, "outerCutoff"));
-    gl_light_uniform(shader, &light.material, &subkey(key, "light"));
-}
-
-fn gl_depth_func(comparator: u32) {
-    unsafe {
-        gl::DepthFunc(comparator);
-    }
-}
-
-fn render(model: &Model) {
-    if model.indices > 0 {
-        gl_draw_elements(model.indices);
-    } else {
-        gl_draw_array(model.vertices);
-    }
-}
-
-fn gl_draw_array(vertices: i32) {
-    unsafe { gl::DrawArrays(gl::TRIANGLES, 0, vertices) }
-}
-
-fn gl_draw_elements(indices: i32) {
-    unsafe { gl::DrawElements(gl::TRIANGLES, indices, gl::UNSIGNED_INT, null()) }
-}
-
-fn gl_bind_vao(vao: VertexArray) {
-    unsafe { gl::BindVertexArray(vao) }
 }

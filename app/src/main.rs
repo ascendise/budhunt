@@ -43,10 +43,9 @@ fn main() {
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
     let collider = box_collider(0.5, 2.0, 0.5);
-    spawn_player(&mut entities, shader_program, clock.clone(), collider);
+    spawn_player(&mut entities, clock.clone(), collider);
     spawn_monkeys(&mut renderer, shader_program, &mut entities);
     spawn_point_lights(&mut renderer, shader_program, &mut entities);
-    spawn_sun(shader_program, &mut entities);
     spawn_floor(&mut renderer, shader_program, &mut entities);
     let window = Arc::new(Mutex::new(window));
     let mut world = setup_world(renderer, entities, clock, &window);
@@ -84,24 +83,6 @@ fn set_skybox(renderer: &mut gfx::opengl::OpenGlRenderer) {
         .compile_shader(VERTEX_SHADER_SKYBOX, FRAGMENT_SHADER_SKYBOX)
         .unwrap();
     renderer.set_skybox(&skybox, shader);
-}
-
-fn create_spotlight(shader_program: u32) -> gfx::Light {
-    let spotlight_color = vec3!(1.0, 1.0, 1.0);
-    //let spotlight_color = vec3!(1.0, 0.0, 0.0);
-    let spot_light = gfx::SpotLight {
-        shader: shader_program,
-        direction: Default::default(),
-        position: Default::default(),
-        inner_cutoff: math::radians(10.0).cos(),
-        outer_cutoff: math::radians(15.0).cos(),
-        material: gfx::Material {
-            ambient: &vec3!(0.2, 0.2, 0.2) * &spotlight_color,
-            diffuse: &vec3!(0.5, 0.5, 0.5) * &spotlight_color,
-            specular: &vec3!(1.0, 1.0, 1.0) * &spotlight_color,
-        },
-    };
-    gfx::Light::Spot(spot_light)
 }
 
 fn spawn_monkeys(
@@ -178,17 +159,6 @@ fn create_point_light(position: math::Vec3, model: gfx::Model) -> gfx::PointLigh
     }
 }
 
-fn spawn_sun(shader_program: u32, entities: &mut ace::Entities) {
-    let sun_color = vec3!(1.0, 1.0, 1.0);
-    let dir_light = gfx::DirectionalLight {
-        shader: shader_program,
-        color: sun_color,
-        direction: vec3!(-0.2, -1.0, -0.3),
-    };
-    let dir_light = ace::Components::Light(gfx::Light::Directional(dir_light));
-    entities.create_entity(vec![dir_light]);
-}
-
 fn spawn_floor(
     renderer: &mut gfx::opengl::OpenGlRenderer,
     shader_program: u32,
@@ -215,13 +185,10 @@ fn spawn_floor(
 
 fn spawn_player(
     entities: &mut ace::Entities,
-    shader_program: u32,
     clock: Box<ace::glfw_input::GlfwClock>,
     collider: ace::physics::Collider,
 ) {
-    let flashlight = create_spotlight(shader_program);
     entities.create_entity(vec![
-        ace::Components::Light(flashlight),
         //ace::Components::Position(vec3!(0.0, 0.0, -50.0)),
         ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
         ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),

@@ -151,19 +151,13 @@ pub struct Transform {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Light {
-    Directional(DirectionalLight),
     Point(PointLight),
-    Spot(SpotLight),
 }
 impl Light {
-    pub fn transform(&mut self, position: &math::Vec3, direction: &math::Vec3) {
-        let (light_position, light_direction) = match self {
-            Light::Point(l) => (&mut l.model.transform.position, &mut Default::default()),
-            Light::Spot(l) => (&mut l.position, &mut l.direction),
-            _ => return,
-        };
-        *light_position = &light_position.clone() + position;
-        *light_direction = &light_direction.clone() + direction;
+    pub fn transform(&mut self, position: &math::Vec3, _: &math::Vec3) {
+        match self {
+            Light::Point(point_light) => point_light.position = &point_light.position + position,
+        }
     }
 }
 
@@ -175,29 +169,10 @@ pub struct Material {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct DirectionalLight {
-    pub shader: Shader,
-    pub color: math::Vec3,
-    pub direction: math::Vec3,
-}
-
-#[derive(Debug, PartialEq, Clone)]
 pub struct PointLight {
     pub model: Model,
     pub color: math::Vec3,
     pub position: math::Vec3,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct SpotLight {
-    pub shader: Shader,
-    pub position: math::Vec3,
-    pub direction: math::Vec3,
-    /// cosin of radians
-    pub inner_cutoff: f32,
-    /// cosin of radians
-    pub outer_cutoff: f32,
-    pub material: Material,
 }
 
 pub fn load_glb_file(gltf_path: &std::path::Path) -> Mesh {

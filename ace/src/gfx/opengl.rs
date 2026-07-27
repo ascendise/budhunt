@@ -203,8 +203,19 @@ impl OpenGlRenderer {
         }
     }
 
-    pub fn set_skybox(&mut self, skybox: SkyboxTextures, shader: Shader) {
-        Self::bind_skybox_textures(skybox);
+    pub fn set_skybox(&mut self, skybox: &gfx::Ibl, shader: Shader) {
+        let image = self.new_tex();
+        self.set_texture(image, &skybox.skybox, gl::RGB8 as i32, gl::RGB);
+        unsafe {
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+        }
+        let diffuse = self.new_tex();
+        self.set_texture(diffuse, &skybox.diffuse, gl::RGB8 as i32, gl::RGB);
+        let specular = self.new_tex();
+        self.set_texture_with_mip_levels(specular, &skybox.specular, gl::RGB8 as i32, gl::RGB);
+        let brdf_lut = self.new_tex();
+        self.set_texture(brdf_lut, &skybox.brdf_lut, gl::RGB8 as i32, gl::RGB);
         let mut vertex_array = 0;
         unsafe {
             gl::GenVertexArrays(1, &mut vertex_array);
@@ -232,54 +243,46 @@ impl OpenGlRenderer {
         let skybox = Skybox {
             vao: vertex_array,
             shader,
+            image: image as i32,
+            specular: specular as i32,
+            diffuse: diffuse as i32,
+            brdf_lut: brdf_lut as i32,
         };
         self.skybox = Some(skybox);
     }
 
-    fn bind_skybox_textures(skybox: SkyboxTextures) {
+    fn set_texture_with_mip_levels(
+        &self,
+        unit: u32,
+        images: &[gfx::Image],
+        internal_format: gl::types::GLint,
+        format: gl::types::GLenum,
+    ) {
+        let texture_unit = gl::TEXTURE0 + unit;
         let mut texture = 0;
         unsafe {
             gl::GenTextures(1, &mut texture);
-            gl::BindTexture(gl::TEXTURE_CUBE_MAP, texture);
-            for (i, image) in skybox.textures.iter().enumerate() {
-                let side = gl::TEXTURE_CUBE_MAP_POSITIVE_X + (i as u32);
+            gl::ActiveTexture(texture_unit);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_MIN_FILTER,
+                gl::LINEAR_MIPMAP_LINEAR as i32,
+            );
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+            for (i, image) in images.iter().enumerate() {
                 gl::TexImage2D(
-                    side,
-                    0,
-                    gl::RGB as i32,
+                    gl::TEXTURE_2D,
+                    i as i32,
+                    internal_format,
                     image.width as i32,
                     image.height as i32,
                     0,
-                    gl::RGB,
+                    format,
                     gl::UNSIGNED_BYTE,
                     image.data.as_ptr() as *const _,
                 );
             }
-            gl::TexParameteri(
-                gl::TEXTURE_CUBE_MAP,
-                gl::TEXTURE_MIN_FILTER,
-                gl::LINEAR as i32,
-            );
-            gl::TexParameteri(
-                gl::TEXTURE_CUBE_MAP,
-                gl::TEXTURE_MAG_FILTER,
-                gl::LINEAR as i32,
-            );
-            gl::TexParameteri(
-                gl::TEXTURE_CUBE_MAP,
-                gl::TEXTURE_WRAP_S,
-                gl::CLAMP_TO_EDGE as i32,
-            );
-            gl::TexParameteri(
-                gl::TEXTURE_CUBE_MAP,
-                gl::TEXTURE_WRAP_T,
-                gl::CLAMP_TO_EDGE as i32,
-            );
-            gl::TexParameteri(
-                gl::TEXTURE_CUBE_MAP,
-                gl::TEXTURE_WRAP_R,
-                gl::CLAMP_TO_EDGE as i32,
-            );
         }
     }
 
@@ -294,6 +297,8 @@ impl OpenGlRenderer {
         if let Some(skybox) = &self.skybox {
             gl_bind_vao(skybox.vao);
             gl_use_program(skybox.shader);
+            gl_int_uniform(skybox.shader, skybox.image, "uSkybox");
+            gl_int_uniform(skybox.shader, skybox.specular, "uPrefilterMap");
             gl_matrix_uniform(skybox.shader, projection, "uProjection");
             gl_matrix_uniform(skybox.shader, &view, "uView");
             gl_depth_func(gl::LEQUAL);
@@ -320,9 +325,14 @@ impl SkyboxTextures {
         }
     }
 }
+#[derive(Debug)]
 pub struct Skybox {
     vao: VertexArray,
     shader: Shader,
+    image: Tex,
+    diffuse: Tex,
+    specular: Tex,
+    brdf_lut: Tex,
 }
 impl Skybox {
     pub const VERTICES: [math::Vec3; 36] = [
@@ -381,8 +391,12 @@ impl Renderer for OpenGlRenderer {
         unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT) };
         let projection = projection.to_projection_matrix();
         let view = camera.to_view_matrix();
+        let skybox = self.skybox.as_ref().expect("No skybox set!");
         for model in models {
             set_model_uniforms(&projection, &view, model);
+            gl_int_uniform(model.shader, skybox.diffuse, "uIrradianceMap");
+            gl_int_uniform(model.shader, skybox.specular, "uPrefilterMap");
+            gl_int_uniform(model.shader, skybox.brdf_lut, "uBrdfLut");
             let mut dir_count = 0;
             let mut point_count = 0;
             let mut spot_count = 0;
@@ -407,13 +421,13 @@ impl Renderer for OpenGlRenderer {
             gl_int_uniform(model.shader, spot_count, "uSpotLightsSize");
             render(model);
         }
-        for light in lights {
-            if let Light::Point(light) = light {
-                let model = &light.model;
-                set_model_uniforms(&projection, &view, model);
-                render(model);
-            }
-        }
+        //for light in lights {
+        //    if let Light::Point(light) = light {
+        //        let model = &light.model;
+        //        set_model_uniforms(&projection, &view, model);
+        //        render(model);
+        //    }
+        //}
         self.render_skybox(&projection, &view);
     }
 }
@@ -425,7 +439,7 @@ fn set_model_uniforms(projection: &math::Matrix4, view: &math::Matrix4, model: &
     gl_matrix_uniform(model.shader, view, "uView");
     let model_matrix = calculate_model_matrix(&model.transform);
     gl_matrix_uniform(model.shader, &model_matrix, "uModel");
-    let normal = model_matrix.inverse().transpose();
+    let normal = (&model_matrix * view).inverse().transpose();
     gl_matrix_uniform(model.shader, &normal, "uNormal");
     gl_material_uniform(model.shader, &model.material);
 }

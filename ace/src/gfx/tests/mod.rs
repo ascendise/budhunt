@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::gfx::*;
 
+mod ibl_tests;
 mod render_system_tests;
 
 #[derive(Clone)]
@@ -20,7 +21,7 @@ impl SpyRenderer {
         let frames = &self.frames.lock().unwrap();
         frames
             .get(idx)
-            .unwrap_or_else(|| panic!("Frame {idx} was not rendered!"))
+            .expect("Frame {idx} was not rendered!")
             .clone()
     }
 }

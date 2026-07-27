@@ -14,7 +14,13 @@ struct BrdfResult {
   vec3 diffuse;
 };
 
+#define PREFILTER_MIP_LEVELS 11.0
+uniform sampler2D uIrradianceMap;
+uniform sampler2D uPrefilterMap;
+uniform sampler2D uBrdfLut;
+
 uniform Material uMaterial;
+
 #define MAX_POINT_LIGHTS 64
 uniform int uPointLightsSize;
 uniform PointLight uPointLights[MAX_POINT_LIGHTS];
@@ -37,6 +43,37 @@ float geometryGGX(vec3 normal, vec3 direction, float roughness);
 
 const float PI = 3.14159265;
 
+const vec2 invAtan = vec2(0.1591, 0.3183);
+vec2 cartesian_to_uv(vec3 cartesian) {
+  vec2 uv = vec2(atan(cartesian.z, cartesian.x), asin(cartesian.y));
+  uv *= invAtan;
+  uv += 0.5;
+  uv.y *= -1;
+  return uv;
+}
+vec3 fresnelIBL(float cosTheta, vec3 F0, float roughness) {
+  return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 calculateAmbience(vec3 albedo, float metallic, float roughness, float ao) {
+  vec3 n = normalize(vNormal);
+  vec3 v = normalize(-vFragPos);
+  vec3 r = reflect(-v, n);
+  vec2 uv = cartesian_to_uv(r);
+  vec3 prefilterColor = textureLod(uPrefilterMap, uv, roughness * PREFILTER_MIP_LEVELS).rgb;
+  float nv = max(dot(n, v), 0.0);
+  vec3 f0 = mix(vec3(0.04), albedo, metallic);
+  vec3 f = fresnelIBL(nv, f0, roughness);
+  vec2 brdf = texture(uBrdfLut, vec2(nv, roughness)).rg;
+  vec3 kS = f;
+  vec3 kD = 1.0 - kS;
+  kD *= 1.0 - metallic;
+  vec3 irradiance = texture(uIrradianceMap, cartesian_to_uv(n)).rgb;
+  vec3 diffuse = irradiance * albedo;
+  vec3 specular = prefilterColor * (f * brdf.x + brdf.y);
+  return (kD * diffuse + specular) * ao;
+}
+
 void main() {
   vec3 albedo_raw = texture(uMaterial.albedo, vTexPos).rgb;
   vec3 albedo = pow(albedo_raw, vec3(2.2));
@@ -44,10 +81,11 @@ void main() {
   float roughness = texture(uMaterial.metallicRoughnessAo, vTexPos).g;
   float ao = texture(uMaterial.metallicRoughnessAo, vTexPos).r;
   vec3 radiance = calculateRadiance(albedo, metallic, roughness, ao);
-  vec3 ambient = vec3(0.03) * albedo * ao;
+  vec3 ambient = calculateAmbience(albedo, metallic, roughness, ao);
   vec3 color = ambient + radiance;
-  color = color / (color + vec3(1.0));
-  color = pow(color, vec3(1.0 / 2.2));
+  //color = color / (color + vec3(1.0));
+  //color = pow(color, vec3(1.0 / 2.2));
+  //fColor = vec4(color, 1.0);
   fColor = vec4(color, 1.0);
 }
 

@@ -6,7 +6,7 @@ use ace::{
     script, vec3,
 };
 use glfw::Context;
-use std::{f32, path::PathBuf, thread};
+use std::{f32, fs};
 use std::{
     path::Path,
     sync::{Arc, Mutex},
@@ -78,43 +78,12 @@ fn setup_window(glfw: &mut glfw::Glfw) -> glfw::PWindow {
 }
 
 fn set_skybox(renderer: &mut gfx::opengl::OpenGlRenderer) {
-    let right = load_image_async(PathBuf::from("./app/skybox/right.jpg"));
-    let left = load_image_async(PathBuf::from("./app/skybox/left.jpg"));
-    let top = load_image_async(PathBuf::from("./app/skybox/top.jpg"));
-    let bottom = load_image_async(PathBuf::from("./app/skybox/bottom.jpg"));
-    let front = load_image_async(PathBuf::from("./app/skybox/front.jpg"));
-    let back = load_image_async(PathBuf::from("./app/skybox/back.jpg"));
-    let textures = gfx::opengl::SkyboxTextures::new(
-        right.join().unwrap(),
-        left.join().unwrap(),
-        top.join().unwrap(),
-        bottom.join().unwrap(),
-        front.join().unwrap(),
-        back.join().unwrap(),
-    );
+    let skybox = fs::read("./app/skybox.ibl").expect("failed to read skybox.ibl");
+    let skybox = gfx::Ibl::deserialize(&skybox);
     let shader = renderer
         .compile_shader(VERTEX_SHADER_SKYBOX, FRAGMENT_SHADER_SKYBOX)
         .unwrap();
-    renderer.set_skybox(textures, shader);
-}
-
-fn load_image_async(path: PathBuf) -> thread::JoinHandle<gfx::Image> {
-    thread::spawn(|| load_image(path))
-}
-
-fn load_image(path: PathBuf) -> gfx::Image {
-    let texture = image::ImageReader::open(&path)
-        .expect("Failed loading texture")
-        .decode()
-        .unwrap();
-    let texture = texture
-        .as_rgb8()
-        .expect("Skybox format is expected to be RGB8!");
-    gfx::Image {
-        data: texture.pixels().flat_map(|p| p.0).collect(),
-        width: texture.width(),
-        height: texture.height(),
-    }
+    renderer.set_skybox(&skybox, shader);
 }
 
 fn create_spotlight(shader_program: u32) -> gfx::Light {
@@ -175,7 +144,7 @@ fn spawn_point_lights(
     shader_program: u32,
     entities: &mut ace::Entities,
 ) {
-    let light_mesh = gfx::load_glb_file(Path::new("./app/models/Light.glb"));
+    let light_mesh = gfx::load_glb_file(Path::new("./app/models/MetallicSphere.glb"));
     let model = renderer.load_mesh(&light_mesh, shader_program);
     let point_lights = [
         vec3!(0.7, 0.2, 2.0),
@@ -253,7 +222,8 @@ fn spawn_player(
     let flashlight = create_spotlight(shader_program);
     entities.create_entity(vec![
         ace::Components::Light(flashlight),
-        ace::Components::Position(vec3!(0.0, 0.0, -50.0)),
+        //ace::Components::Position(vec3!(0.0, 0.0, -50.0)),
+        ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
         ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
         ace::Components::Scripts(vec![Box::new(MovementScript::new(clock))]),
         ace::Components::Player,

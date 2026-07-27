@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
 use crate::*;
@@ -303,12 +304,6 @@ pub struct Vertex {
 /// Vertex index
 pub type Index = u32;
 
-#[derive(Debug, Clone)]
-pub struct Image {
-    pub data: Vec<u8>,
-    pub width: u32,
-    pub height: u32,
-}
 const EMPTY_IMAGE: Image = Image {
     data: vec![],
     width: 0,
@@ -317,5 +312,94 @@ const EMPTY_IMAGE: Image = Image {
 impl Image {
     pub const fn empty() -> Self {
         EMPTY_IMAGE
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Image {
+    pub width: u32,
+    pub height: u32,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Ibl {
+    pub skybox: Image,
+    pub diffuse: Image,
+    pub brdf_lut: Image,
+    pub specular: Vec<Image>,
+}
+impl Ibl {
+    const SKYBOX_IMAGE_INDEX: usize = 0;
+    const DIFFUSE_IMAGE_INDEX: usize = 1;
+    const LUT_IMAGE_INDEX: usize = 2;
+    const SPECULAR_IMAGE_INDEX: usize = 3;
+    const DELIMITER: &[u8; 3] = b"\n\n\0";
+
+    pub fn serialize(&self) -> Vec<u8> {
+        let data = serde_json::json!(self);
+        let mut data = data.to_string().into_bytes();
+        self.append_image_data(&mut data);
+        data
+    }
+
+    fn append_image_data(&self, buffer: &mut Vec<u8>) {
+        let images = self.list_images_sorted();
+        buffer.append(&mut Self::DELIMITER.to_vec());
+        for image in images {
+            buffer.append(&mut image.data.clone());
+            buffer.append(&mut Self::DELIMITER.to_vec());
+        }
+    }
+
+    fn list_images_sorted(&self) -> Vec<&Image> {
+        let mut images = vec![&self.skybox, &self.diffuse, &self.brdf_lut];
+        let mut specular: Vec<&Image> = self.specular.iter().collect();
+        images.append(&mut specular);
+        images
+    }
+
+    pub fn deserialize(data: &[u8]) -> Ibl {
+        let (json, image_data) = Self::split_data(data);
+        let mut ibl: Ibl = serde_json::from_str(&json).unwrap();
+        ibl.skybox.data = image_data[Ibl::SKYBOX_IMAGE_INDEX].to_vec();
+        ibl.diffuse.data = image_data[Ibl::DIFFUSE_IMAGE_INDEX].to_vec();
+        ibl.brdf_lut.data = image_data[Ibl::LUT_IMAGE_INDEX].to_vec();
+        for (s, specular) in &mut ibl.specular.iter_mut().enumerate() {
+            specular.data = image_data[Ibl::SPECULAR_IMAGE_INDEX + s].to_vec();
+        }
+        ibl
+    }
+
+    fn split_data(data: &[u8]) -> (String, Vec<&[u8]>) {
+        let image_data_offset = Self::find_next_delimiter(data, 0);
+        let json = String::from_utf8(data[0..image_data_offset].to_vec())
+            .expect("Could not read json from ibl");
+        let images = Self::split_images(&data[image_data_offset + Self::DELIMITER.len()..]);
+        (json, images)
+    }
+
+    fn find_next_delimiter(data: &[u8], offset: usize) -> usize {
+        for (w, window) in data[offset..].windows(Self::DELIMITER.len()).enumerate() {
+            if window == Self::DELIMITER {
+                return w + offset;
+            }
+        }
+        data.len()
+    }
+
+    fn split_images(image_data: &[u8]) -> Vec<&[u8]> {
+        let mut images = Vec::new();
+        let mut last = 0;
+        loop {
+            let offset = Self::find_next_delimiter(image_data, last);
+            if offset == image_data.len() {
+                break;
+            }
+            images.push(&image_data[last..offset]);
+            last = offset + Self::DELIMITER.len();
+        }
+        images
     }
 }

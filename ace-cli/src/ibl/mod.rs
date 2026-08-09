@@ -38,12 +38,11 @@ impl Baker for CpuBaker {
                 tracing::info_span!("Diffuse")
                     .in_scope(|| self.bake_diffuse(image.clone(), cores.max(1) as usize))
             });
-            let skybox = image.as_bytes().to_vec();
             Ibl {
                 skybox: Image {
                     width: image.width(),
                     height: image.height(),
-                    data: skybox,
+                    data: image.to_rgb32f().pixels().flat_map(|f| f.0).collect(),
                 },
                 diffuse: diffuse.join().expect("failure during diffuse baking"),
                 specular: specular.join().expect("failure during specular baking"),
@@ -52,6 +51,7 @@ impl Baker for CpuBaker {
         })
     }
 }
+
 impl CpuBaker {
     pub fn new(cores: usize, convolute_sample_delta: f32, brdf_sample_count: u32) -> Self {
         Self {
@@ -153,13 +153,21 @@ impl CpuBaker {
             }
         }
         Image {
-            width: image.width(),
-            height: image.height(),
+            width,
+            height,
             data: image.into_raw(),
         }
     }
 
-    fn bake_specular(&self, image: Arc<image::DynamicImage>) -> Vec<Image> {
+    fn to_hdr_image(pixels: &[math::Vec3], width: u32, height: u32) -> Image<f32> {
+        Image {
+            width,
+            height,
+            data: pixels.iter().flat_map(|p| [p.x, p.y, p.z]).collect(),
+        }
+    }
+
+    fn bake_specular(&self, image: Arc<image::DynamicImage>) -> Vec<Image<f32>> {
         let image = Arc::new(image);
         let max_mip_level = u32::ilog2(image.width().max(image.height())) + 1;
         tracing::info!("Baking specular component with {max_mip_level} mip map levels");
@@ -171,14 +179,14 @@ impl CpuBaker {
                 let image = image.resize(
                     image.width() / minification,
                     image.height() / minification,
-                    image::imageops::FilterType::Nearest,
+                    image::imageops::FilterType::Lanczos3,
                 );
                 tracing::info!("Baking Mip Level {level}");
                 let roughness = level as f32 / max_mip_level as f32;
                 let specular_map =
                     Self::bake_specular_with_roughness(&image, roughness, brdf_sample_count);
                 tracing::info!("Finished baking specular component ({level})");
-                Self::to_image(&specular_map, image.width(), image.height())
+                Self::to_hdr_image(&specular_map, image.width(), image.height())
             })
             .collect()
     }
@@ -230,7 +238,7 @@ impl CpuBaker {
         bits as f32 * 2.328_306_4e-10_f32
     }
 
-    fn bake_diffuse(&self, image: Arc<image::DynamicImage>, cores: usize) -> Image {
+    fn bake_diffuse(&self, image: Arc<image::DynamicImage>, cores: usize) -> Image<f32> {
         let _ = tracing::info_span!("Diffuse");
         tracing::info!("Bake diffuse component with {cores} core(s)");
         let image_size = image.width() * image.height();
@@ -247,7 +255,7 @@ impl CpuBaker {
             irradiance_map.append(&mut result);
         }
         tracing::info!("Finished baking diffuse map");
-        Self::to_image(&irradiance_map, image.width(), image.height())
+        Self::to_hdr_image(&irradiance_map, image.width(), image.height())
     }
 
     fn bake_diffuse_async(
@@ -305,7 +313,11 @@ impl CpuBaker {
         let spherical = Spheric::from_cartesian(direction);
         let texcoord = UV::from_spheric(&spherical);
         let texcoord = texcoord.to_screen_coordinates(image.width(), image.height());
+        let image = match image {
+            image::DynamicImage::ImageRgb32F(image) => image,
+            _ => panic!("non-hdr image supplied"),
+        };
         let pixel = image.get_pixel(texcoord.x as u32, texcoord.y as u32).0;
-        vec3!(pixel[0] as f32, pixel[1] as f32, pixel[2] as f32)
+        vec3!(pixel[0], pixel[1], pixel[2])
     }
 }

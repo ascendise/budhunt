@@ -34,6 +34,7 @@ impl OpenGlRenderer {
         unsafe {
             gl::ClearColor(0.25, 0.25, 0.25, 1.0);
             gl::Enable(gl::DEPTH_TEST);
+            gl::Enable(gl::FRAMEBUFFER_SRGB);
         }
         Self {
             texture_count: 0,
@@ -49,7 +50,7 @@ impl OpenGlRenderer {
 
     pub fn load_mesh(&mut self, mesh: &Mesh, shader: Shader) -> Model {
         let albedo = self.new_tex();
-        self.set_texture(albedo, &mesh.albedo, gl::RGBA8 as i32, gl::RGBA);
+        self.set_texture(albedo, &mesh.albedo, gl::SRGB_ALPHA as i32, gl::RGBA);
         let metallic_roughness_ao = self.new_tex();
         self.set_texture(
             metallic_roughness_ao,
@@ -162,10 +163,39 @@ impl OpenGlRenderer {
         }
     }
 
+    fn set_texture_f32(
+        &self,
+        unit: u32,
+        image: &Image<f32>,
+        internal_format: gl::types::GLint,
+        format: gl::types::GLenum,
+    ) {
+        let texture_unit = gl::TEXTURE0 + unit;
+        let mut texture = 0;
+        unsafe {
+            gl::GenTextures(1, &mut texture);
+            gl::ActiveTexture(texture_unit);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                internal_format,
+                image.width as i32,
+                image.height as i32,
+                0,
+                format,
+                gl::FLOAT,
+                image.data.as_ptr() as *const _,
+            );
+            gl::GenerateMipmap(gl::TEXTURE_2D);
+        }
+    }
+
     pub fn compile_shader(
         &self,
         vertex_shader: &str,
         fragment_shader: &str,
+        tonemap_shader: &str,
     ) -> Result<Shader, OpenGlError> {
         unsafe {
             let vertex_shader = Self::compile(vertex_shader, gl::VERTEX_SHADER)?;
@@ -173,9 +203,15 @@ impl OpenGlRenderer {
                 Self::compile(fragment_shader, gl::FRAGMENT_SHADER).inspect_err(|_| {
                     gl::DeleteShader(vertex_shader);
                 })?;
+            let tonemap_shader =
+                Self::compile(tonemap_shader, gl::FRAGMENT_SHADER).inspect_err(|_| {
+                    gl::DeleteShader(vertex_shader);
+                    gl::DeleteShader(fragment_shader);
+                })?;
             let shader_program = gl::CreateProgram();
             gl::AttachShader(shader_program, vertex_shader);
             gl::AttachShader(shader_program, fragment_shader);
+            gl::AttachShader(shader_program, tonemap_shader);
             gl::LinkProgram(shader_program);
             let mut success = 0;
             gl::GetProgramiv(shader_program, gl::LINK_STATUS, &mut success);
@@ -184,10 +220,12 @@ impl OpenGlRenderer {
                 gl::GetProgramInfoLog(shader_program, 512, null_mut(), err.as_mut_ptr());
                 let err = String::from_utf8(err.iter().map(|c| *c as u8).collect()).unwrap();
                 let err = err.trim_end_matches('\0').to_string();
+                gl::DeleteShader(tonemap_shader);
                 gl::DeleteShader(fragment_shader);
                 gl::DeleteShader(vertex_shader);
                 return Err(OpenGlError { err });
             }
+            gl::DeleteShader(tonemap_shader);
             gl::DeleteShader(fragment_shader);
             gl::DeleteShader(vertex_shader);
             Ok(shader_program)
@@ -221,15 +259,15 @@ impl OpenGlRenderer {
 
     pub fn set_skybox(&mut self, skybox: &gfx::Ibl, shader: Shader) {
         let image = self.new_tex();
-        self.set_texture(image, &skybox.skybox, gl::RGB8 as i32, gl::RGB);
+        self.set_texture_f32(image, &skybox.skybox, gl::RGB32F as i32, gl::RGB);
         unsafe {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
         }
         let diffuse = self.new_tex();
-        self.set_texture(diffuse, &skybox.diffuse, gl::RGB8 as i32, gl::RGB);
+        self.set_texture_f32(diffuse, &skybox.diffuse, gl::RGB32F as i32, gl::RGB);
         let specular = self.new_tex();
-        self.set_texture_with_mip_levels(specular, &skybox.specular, gl::RGB8 as i32, gl::RGB);
+        self.set_texture_with_mip_levels(specular, &skybox.specular, gl::RGB32F as i32, gl::RGB);
         let brdf_lut = self.new_tex();
         self.set_texture(brdf_lut, &skybox.brdf_lut, gl::RGB8 as i32, gl::RGB);
         let mut vertex_array = 0;
@@ -270,7 +308,7 @@ impl OpenGlRenderer {
     fn set_texture_with_mip_levels(
         &self,
         unit: u32,
-        images: &[gfx::Image],
+        images: &[gfx::Image<f32>],
         internal_format: gl::types::GLint,
         format: gl::types::GLenum,
     ) {
@@ -295,7 +333,7 @@ impl OpenGlRenderer {
                     image.height as i32,
                     0,
                     format,
-                    gl::UNSIGNED_BYTE,
+                    gl::FLOAT,
                     image.data.as_ptr() as *const _,
                 );
             }
@@ -338,6 +376,8 @@ impl<'a> OpenGlShader for SkyboxShader<'a> {
             gl_int_uniform(shader, self.skybox.image, "uSkybox");
             gl_matrix_uniform(shader, self.view, "uView");
             gl_matrix_uniform(shader, self.projection, "uProjection");
+            gl_float_uniform(shader, 2.2, "uGamma");
+            gl_float_uniform(shader, 0.1, "uExposure");
             gl::DepthFunc(gl::LEQUAL);
             gl::DrawArrays(gl::TRIANGLES, 0, Skybox::VERTICES.len() as i32);
             gl::DepthFunc(gl::LESS);
@@ -375,6 +415,7 @@ impl<'a> ModelShader<'a> {
             model.material.metallic_roughness_ao,
             "uMaterial.metallicRoughnessAo",
         );
+        gl_float_uniform(model.shader, 0.5, "uExposure");
     }
 
     fn set_skybox_uniforms(&self, model: &Model) {
@@ -430,6 +471,11 @@ fn gl_vec3_uniform(shader: Shader, value: &math::Vec3, key: &str) {
 fn gl_int_uniform(shader: Shader, value: i32, key: &str) {
     let location = gl_get_uniform_location(shader, key);
     unsafe { gl::Uniform1i(location, value) }
+}
+
+fn gl_float_uniform(shader: Shader, value: f32, key: &str) {
+    let location = gl_get_uniform_location(shader, key);
+    unsafe { gl::Uniform1f(location, value) }
 }
 
 fn gl_get_uniform_location(shader: Shader, key: &str) -> gl::types::GLint {

@@ -291,60 +291,71 @@ impl Image {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Image {
+pub struct Image<P = u8> {
     pub width: u32,
     pub height: u32,
     #[serde(skip_serializing, skip_deserializing)]
-    pub data: Vec<u8>,
+    pub data: Vec<P>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Ibl {
-    pub skybox: Image,
-    pub diffuse: Image,
+    pub skybox: Image<f32>,
+    pub diffuse: Image<f32>,
     pub brdf_lut: Image,
-    pub specular: Vec<Image>,
+    pub specular: Vec<Image<f32>>,
 }
 impl Ibl {
     const SKYBOX_IMAGE_INDEX: usize = 0;
     const DIFFUSE_IMAGE_INDEX: usize = 1;
     const LUT_IMAGE_INDEX: usize = 2;
     const SPECULAR_IMAGE_INDEX: usize = 3;
-    const DELIMITER: &[u8; 3] = b"\n\n\0";
+    const DELIMITER: &[u8; 8] = b"cafebabe";
 
     pub fn serialize(&self) -> Vec<u8> {
         let data = serde_json::json!(self);
         let mut data = data.to_string().into_bytes();
-        self.append_image_data(&mut data);
+        data.append(&mut Self::DELIMITER.to_vec());
+        self.append_image_data_f32(&mut data, &self.skybox);
+        self.append_image_data_f32(&mut data, &self.diffuse);
+        self.append_image_data(&mut data, &self.brdf_lut.data);
+        for specular in &self.specular {
+            self.append_image_data_f32(&mut data, specular);
+        }
         data
     }
 
-    fn append_image_data(&self, buffer: &mut Vec<u8>) {
-        let images = self.list_images_sorted();
-        buffer.append(&mut Self::DELIMITER.to_vec());
-        for image in images {
-            buffer.append(&mut image.data.clone());
-            buffer.append(&mut Self::DELIMITER.to_vec());
-        }
+    fn append_image_data_f32(&self, buffer: &mut Vec<u8>, image: &Image<f32>) {
+        let data: Vec<u8> = image
+            .data
+            .iter()
+            .flat_map(|u| u.to_bits().to_le_bytes())
+            .collect();
+        self.append_image_data(buffer, &data);
     }
 
-    fn list_images_sorted(&self) -> Vec<&Image> {
-        let mut images = vec![&self.skybox, &self.diffuse, &self.brdf_lut];
-        let mut specular: Vec<&Image> = self.specular.iter().collect();
-        images.append(&mut specular);
-        images
+    fn append_image_data(&self, buffer: &mut Vec<u8>, data: &[u8]) {
+        buffer.append(&mut data.to_vec());
+        buffer.append(&mut Self::DELIMITER.to_vec());
     }
 
     pub fn deserialize(data: &[u8]) -> Ibl {
         let (json, image_data) = Self::split_data(data);
         let mut ibl: Ibl = serde_json::from_str(&json).unwrap();
-        ibl.skybox.data = image_data[Ibl::SKYBOX_IMAGE_INDEX].to_vec();
-        ibl.diffuse.data = image_data[Ibl::DIFFUSE_IMAGE_INDEX].to_vec();
+        ibl.skybox.data = Self::u8_to_f32(image_data[Ibl::SKYBOX_IMAGE_INDEX]);
+        ibl.diffuse.data = Self::u8_to_f32(image_data[Ibl::DIFFUSE_IMAGE_INDEX]);
         ibl.brdf_lut.data = image_data[Ibl::LUT_IMAGE_INDEX].to_vec();
         for (s, specular) in &mut ibl.specular.iter_mut().enumerate() {
-            specular.data = image_data[Ibl::SPECULAR_IMAGE_INDEX + s].to_vec();
+            specular.data = Self::u8_to_f32(image_data[Ibl::SPECULAR_IMAGE_INDEX + s]);
         }
         ibl
+    }
+
+    fn u8_to_f32(data: &[u8]) -> Vec<f32> {
+        data.chunks(4)
+            .map(|byte| u32::from_ne_bytes([byte[0], byte[1], byte[2], byte[3]]))
+            .map(f32::from_bits)
+            .collect()
     }
 
     fn split_data(data: &[u8]) -> (String, Vec<&[u8]>) {

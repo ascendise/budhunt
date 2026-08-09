@@ -15,6 +15,7 @@ mod scripts;
 
 static VERTEX_SHADER_PBR: &str = include_str!("../shaders/pbr.vs.glsl");
 static FRAGMENT_SHADER_PBR: &str = include_str!("../shaders/pbr.fs.glsl");
+static TONEMAPPING_SHADER: &str = include_str!("../shaders/tonemapping.glsl");
 static VERTEX_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.vs.glsl");
 static FRAGMENT_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.fs.glsl");
 
@@ -38,7 +39,7 @@ fn main() {
     let mut renderer = gfx::opengl::OpenGlRenderer::init();
     set_skybox(&mut renderer);
     let shader_program = renderer
-        .compile_shader(VERTEX_SHADER_PBR, FRAGMENT_SHADER_PBR)
+        .compile_shader(VERTEX_SHADER_PBR, FRAGMENT_SHADER_PBR, TONEMAPPING_SHADER)
         .expect("Failed to compile model shader");
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
@@ -80,7 +81,11 @@ fn set_skybox(renderer: &mut gfx::opengl::OpenGlRenderer) {
     let skybox = fs::read("./app/skybox.ibl").expect("failed to read skybox.ibl");
     let skybox = gfx::Ibl::deserialize(&skybox);
     let shader = renderer
-        .compile_shader(VERTEX_SHADER_SKYBOX, FRAGMENT_SHADER_SKYBOX)
+        .compile_shader(
+            VERTEX_SHADER_SKYBOX,
+            FRAGMENT_SHADER_SKYBOX,
+            TONEMAPPING_SHADER,
+        )
         .unwrap();
     renderer.set_skybox(&skybox, shader);
 }
@@ -90,7 +95,7 @@ fn spawn_monkeys(
     shader_program: u32,
     entities: &mut ace::Entities,
 ) -> ace::physics::Collider {
-    let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/Suzanne.glb"));
+    let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/ColoredSphere.glb"));
     let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
     let monkeys = [
         vec3!(0.0, 0.0, 0.0),

@@ -98,5 +98,6 @@ fn inspect(input_path: &Path) {
     let file = fs::read(input_path).expect("failed to read file");
     let skybox = gfx::Ibl::deserialize(&file);
     let json = serde_json::json!(skybox);
+
     println!("{}", serde_json::to_string_pretty(&json).unwrap());
 }

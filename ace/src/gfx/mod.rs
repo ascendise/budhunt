@@ -11,6 +11,25 @@ pub struct RenderSystem {
     renderer: Box<dyn Renderer>,
     projection: Mutex<gfx::Projection>,
 }
+impl System for RenderSystem {
+    fn run(&self, entities: &mut Entities, events: &Events) {
+        let mut projection = self.projection.lock().unwrap();
+        let inputs = events.get_events(|e| event!(e, Event::Input));
+        Self::handle_inputs(&inputs, &mut projection);
+        let camera = Self::find_camera(entities);
+        let models: Vec<Model> = entities
+            .get_entities(Components::MODEL)
+            .iter()
+            .map(|m| Self::get_model(m, entities))
+            .collect();
+        let lights: Vec<Light> = entities
+            .get_entities(Components::LIGHT)
+            .iter()
+            .map(|l| Self::get_light(l, entities))
+            .collect();
+        self.renderer.render(&projection, &camera, &models, &lights);
+    }
+}
 impl RenderSystem {
     pub const MIN_FOV: f32 = 1.0;
     pub const MAX_FOV: f32 = 120.0;
@@ -65,26 +84,6 @@ impl RenderSystem {
         light
     }
 }
-impl System for RenderSystem {
-    fn run(&self, entities: &mut Entities, events: &Events) {
-        let mut projection = self.projection.lock().unwrap();
-        let inputs = events.get_events(|e| event!(e, Event::Input));
-        Self::handle_inputs(&inputs, &mut projection);
-        let camera = Self::find_camera(entities);
-        let render_models: Vec<Model> = entities
-            .get_entities(Components::MODEL)
-            .iter()
-            .map(|m| Self::get_model(m, entities))
-            .collect();
-        let render_lights: Vec<Light> = entities
-            .get_entities(Components::LIGHT)
-            .iter()
-            .map(|l| Self::get_light(l, entities))
-            .collect();
-        self.renderer
-            .render(&projection, &camera, &render_models, &render_lights);
-    }
-}
 pub trait Renderer {
     fn render(&self, projection: &Projection, camera: &Camera, model: &[Model], lights: &[Light]);
 }
@@ -117,11 +116,21 @@ impl Camera {
         math::look_at(&self.position, &center, &up)
     }
 }
-
+#[derive(Debug, PartialEq, Clone)]
+pub struct Model {
+    pub nodes: Vec<ModelNode>,
+}
+impl Model {
+    pub fn transform(&mut self, direction: &math::Vec3) {
+        for node in &mut self.nodes {
+            node.transform(direction);
+        }
+    }
+}
 pub type VertexArray = u32;
 pub type Shader = u32;
 #[derive(Debug, PartialEq, Clone)]
-pub struct Model {
+pub struct ModelNode {
     pub vao: VertexArray,
     pub shader: Shader,
     pub material: Texture,
@@ -129,9 +138,9 @@ pub struct Model {
     pub vertices: i32,
     pub indices: i32,
 }
-impl Model {
-    pub fn transform(&mut self, position: &math::Vec3) {
-        self.transform.position = &self.transform.position + position;
+impl ModelNode {
+    pub fn transform(&mut self, direction: &math::Vec3) {
+        self.transform.position = &self.transform.position + direction;
     }
 }
 
@@ -170,29 +179,65 @@ pub struct Material {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct PointLight {
-    pub model: Model,
+    pub model: Option<Model>,
     pub color: math::Vec3,
     pub position: math::Vec3,
 }
 
-pub fn load_glb_file(gltf_path: &std::path::Path) -> Mesh {
+pub type CollisionMesh = Vec<math::Vec3>;
+pub const COLLIDER_MESH_NAME: &str = "COLLIDER";
+
+/// Reads glb file from file system and returns a [Mesh] consisting of all the meshes inside the glb.
+/// If a [gltf::Mesh] has the [gltf::Mesh::name] "COLLIDER", it gets returned separately as [ColllisionMesh].
+///
+/// NOTE: In Blender, make sure the MESH (green symbol) is called "COLLIDER",
+/// not just the OBJECT (orange symbol, parent of mesh).
+pub fn load_glb_file(gltf_path: &std::path::Path) -> (Mesh, Option<CollisionMesh>) {
     let (document, buffers, images) = gltf::import(gltf_path).unwrap();
-    for scene in document.scenes() {
-        for node in scene.nodes() {
-            if let Some(mesh) = get_mesh(&node, &buffers, &images) {
-                return mesh;
+    let mut collider = None;
+    let nodes: Vec<MeshNode> = document
+        .meshes()
+        .filter_map(|m| {
+            if m.name() == Some(COLLIDER_MESH_NAME) {
+                let collider_mesh =
+                    load_collider_mesh(&m, &buffers).expect("failed to load collider mesh");
+                collider = Some(collider_mesh);
+                None
+            } else {
+                let mesh_node = load_mesh_node(&m, &buffers, &images).expect("failed to load mesh");
+                Some(mesh_node)
             }
-        }
+        })
+        .collect();
+    if nodes.is_empty() {
+        panic!("No model found!")
     }
-    panic!("No model found!")
+    let mesh = Mesh { nodes };
+    (mesh, collider)
 }
 
-fn get_mesh(
-    node: &gltf::Node,
+fn load_collider_mesh(
+    mesh: &gltf::Mesh<'_>,
+    buffers: &[gltf::buffer::Data],
+) -> Option<CollisionMesh> {
+    let primitives: Vec<_> = mesh.primitives().collect();
+    let primitive = primitives.first()?;
+    let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+    let positions: Vec<math::Vec3> = reader
+        .read_positions()
+        .expect("No positions found")
+        .map(|v| vec3!(v[0], v[1], v[2]))
+        .collect();
+    let indices = reader.read_indices().expect("No indices found").into_u32();
+    let mesh = indices.map(|i| positions[i as usize].clone()).collect();
+    Some(mesh)
+}
+
+fn load_mesh_node(
+    mesh: &gltf::Mesh,
     buffers: &[gltf::buffer::Data],
     images: &[gltf::image::Data],
-) -> Option<Mesh> {
-    let mesh = node.mesh()?;
+) -> Option<MeshNode> {
     let primitives: Vec<_> = mesh.primitives().collect();
     let primitive = primitives.first()?;
     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -224,7 +269,7 @@ fn get_mesh(
         .expect("no metallic-roughness texture found")
         .texture();
     let metallic_roughness_ao = read_texture(images, metallic_roughness_ao);
-    let mesh = Mesh {
+    let mesh = MeshNode {
         vertices,
         indices,
         albedo,
@@ -253,6 +298,7 @@ fn read_vertices(
 }
 
 fn read_texture(images: &[gltf::image::Data], texture: gltf::Texture<'_>) -> Image {
+    let texture = texture.source();
     let texture = &images[texture.index()];
     Image {
         data: texture.pixels.clone(),
@@ -261,8 +307,12 @@ fn read_texture(images: &[gltf::image::Data], texture: gltf::Texture<'_>) -> Ima
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct Mesh {
+    pub nodes: Vec<MeshNode>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MeshNode {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<Index>,
     pub albedo: Image,

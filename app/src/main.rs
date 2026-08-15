@@ -44,9 +44,15 @@ fn main() {
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
     let collider = box_collider(0.5, 2.0, 0.5);
-    spawn_player(&mut entities, clock.clone(), collider);
-    spawn_monkeys(&mut renderer, shader_program, &mut entities);
-    spawn_point_lights(&mut renderer, shader_program, &mut entities);
+    spawn_player(
+        &mut renderer,
+        shader_program,
+        &mut entities,
+        clock.clone(),
+        collider,
+    );
+    spawn_targets(&mut renderer, shader_program, &mut entities);
+    spawn_point_lights(&mut entities);
     spawn_floor(&mut renderer, shader_program, &mut entities);
     let window = Arc::new(Mutex::new(window));
     let mut world = setup_world(renderer, entities, clock, &window);
@@ -90,14 +96,15 @@ fn set_skybox(renderer: &mut gfx::opengl::OpenGlRenderer) {
     renderer.set_skybox(&skybox, shader);
 }
 
-fn spawn_monkeys(
+fn spawn_targets(
     renderer: &mut gfx::opengl::OpenGlRenderer,
     shader_program: u32,
     entities: &mut ace::Entities,
 ) -> ace::physics::Collider {
-    let monkey_mesh = gfx::load_glb_file(Path::new("./app/models/ColoredSphere.glb"));
-    let monkey_model = renderer.load_mesh(&monkey_mesh, shader_program);
-    let monkeys = [
+    // Collider should be hitting player even if visible object is very high (for testing)
+    let (mesh, collider) = gfx::load_glb_file(Path::new("./app/models/Target.glb"));
+    let model = renderer.load_mesh(&mesh, shader_program);
+    let targets = [
         vec3!(0.0, 0.0, 0.0),
         vec3!(2.0, 5.0, -15.0),
         vec3!(-1.5, -2.2, -2.5),
@@ -109,29 +116,17 @@ fn spawn_monkeys(
         vec3!(1.5, 0.2, -1.5),
         vec3!(-1.3, 1.0, -1.5),
     ];
-    let collider = monkey_mesh
-        .vertices
-        .iter()
-        .map(|v| v.position.clone())
-        .collect();
-    let collider = ace::physics::Collider::new(collider);
-    for monkey in monkeys {
-        let model = monkey_model.clone();
-        let position = ace::Components::Position(monkey.clone());
+    let collider = ace::physics::Collider::new(collider.expect("no collider found for Target.glb"));
+    for target in targets {
+        let position = ace::Components::Position(target);
         let collider = ace::Components::Collider(collider.clone());
-        let components = vec![ace::Components::Model(model), position, collider];
+        let components = vec![ace::Components::Model(model.clone()), position, collider];
         entities.create_entity(components);
     }
     collider
 }
 
-fn spawn_point_lights(
-    renderer: &mut gfx::opengl::OpenGlRenderer,
-    shader_program: u32,
-    entities: &mut ace::Entities,
-) {
-    let light_mesh = gfx::load_glb_file(Path::new("./app/models/MetallicSphere.glb"));
-    let model = renderer.load_mesh(&light_mesh, shader_program);
+fn spawn_point_lights(entities: &mut ace::Entities) {
     let point_lights = [
         vec3!(0.7, 0.2, 2.0),
         vec3!(2.3, -3.3, -4.0),
@@ -148,7 +143,7 @@ fn spawn_point_lights(
     });
     let move_script = Box::new(move_script);
     for position in point_lights {
-        let light = create_point_light(position.clone(), model.clone());
+        let light = create_point_light(position.clone());
         let light = gfx::Light::Point(light);
         let light = ace::Components::Light(light);
         let position = ace::Components::Position(position);
@@ -156,9 +151,9 @@ fn spawn_point_lights(
         entities.create_entity(vec![light, position, script]);
     }
 }
-fn create_point_light(position: math::Vec3, model: gfx::Model) -> gfx::PointLight {
+fn create_point_light(position: math::Vec3) -> gfx::PointLight {
     gfx::PointLight {
-        model,
+        model: None,
         color: vec3!(1.0, 1.0, 1.0) * 10.0,
         position,
     }
@@ -169,9 +164,9 @@ fn spawn_floor(
     shader_program: u32,
     entities: &mut ace::Entities,
 ) {
-    let mut plane_mesh = gfx::load_glb_file(Path::new("./app/models/Plane.glb"));
+    let (mut plane_mesh, _) = gfx::load_glb_file(Path::new("./app/models/Plane.glb"));
     // Scale / Move model programatically
-    plane_mesh.vertices = plane_mesh
+    plane_mesh.nodes[0].vertices = plane_mesh.nodes[0]
         .vertices
         .iter_mut()
         .map(|v| {
@@ -189,10 +184,14 @@ fn spawn_floor(
 }
 
 fn spawn_player(
+    renderer: &mut gfx::opengl::OpenGlRenderer,
+    shader_program: gfx::Shader,
     entities: &mut ace::Entities,
     clock: Box<ace::glfw_input::GlfwClock>,
     collider: ace::physics::Collider,
 ) {
+    let (mesh, _) = gfx::load_glb_file(Path::new("./app/models/Rifle.glb"));
+    let model = renderer.load_mesh(&mesh, shader_program);
     entities.create_entity(vec![
         //ace::Components::Position(vec3!(0.0, 0.0, -50.0)),
         ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
@@ -200,6 +199,7 @@ fn spawn_player(
         ace::Components::Scripts(vec![Box::new(MovementScript::new(clock))]),
         ace::Components::Player,
         ace::Components::Collider(collider),
+        ace::Components::Model(model),
         ace::Components::RigidBody(ace::physics::RigidBody::new(vec3!(0.0))),
     ]);
 }

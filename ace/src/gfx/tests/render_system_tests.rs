@@ -27,7 +27,7 @@ pub fn render_should_pass_objects_to_renderer() {
         Components::Direction(Default::default()),
     ]); // Camera
     entities.create_entity(vec![Components::Position(Default::default())]); // Some random filler
-    let expected_model = Model {
+    let expected_model = ModelNode {
         vao: 123,
         shader: 123,
         material: Texture {
@@ -38,9 +38,12 @@ pub fn render_should_pass_objects_to_renderer() {
         vertices: 3,
         indices: 3,
     };
+    let expected_model = Model {
+        nodes: vec![expected_model],
+    };
     entities.create_entity(vec![Components::Model(expected_model.clone())]);
     let expected_light = PointLight {
-        model: expected_model.clone(),
+        model: Some(expected_model.clone()),
         color: vec3!(1.0),
         position: vec3!(1.0),
     };
@@ -65,7 +68,7 @@ pub fn render_should_transform_models_with_position() {
         Components::Position(Default::default()),
         Components::Direction(Default::default()),
     ]); // Camera
-    let model = Model {
+    let model = ModelNode {
         vao: 123,
         shader: 123,
         material: Texture {
@@ -79,6 +82,7 @@ pub fn render_should_transform_models_with_position() {
         vertices: 3,
         indices: 3,
     };
+    let model = Model { nodes: vec![model] };
     entities.create_entity(vec![
         Components::Model(model.clone()),
         Components::Position(vec3!(5.0)),
@@ -88,7 +92,7 @@ pub fn render_should_transform_models_with_position() {
     // Assert
     let frame = spy.frame(0);
     let model = frame.models.first().expect("Model was not rendered!");
-    assert_float_eq!(Vec3 vec3!(6.0), model.transform.position);
+    assert_float_eq!(Vec3 vec3!(6.0), model.nodes[0].transform.position);
 }
 
 #[test_case(Input::Scroll(-10.0), 55.0)]

@@ -49,26 +49,35 @@ impl OpenGlRenderer {
     }
 
     pub fn load_mesh(&mut self, mesh: &Mesh, shader: Shader) -> Model {
+        let nodes = mesh
+            .nodes
+            .iter()
+            .map(|n| self.load_mesh_node(n, shader))
+            .collect();
+        Model { nodes }
+    }
+
+    fn load_mesh_node(&mut self, node: &MeshNode, shader: Shader) -> ModelNode {
         let albedo = self.new_tex();
-        self.set_texture(albedo, &mesh.albedo, gl::SRGB_ALPHA as i32, gl::RGBA);
+        self.set_texture(albedo, &node.albedo, gl::SRGB_ALPHA as i32, gl::RGBA);
         let metallic_roughness_ao = self.new_tex();
         self.set_texture(
             metallic_roughness_ao,
-            &mesh.metallic_roughness_ao,
+            &node.metallic_roughness_ao,
             gl::RGB8 as i32,
             gl::RGB,
         );
-        let vao = self.set_mesh_vao(mesh);
-        Model {
+        let vao = self.set_mesh_vao(node);
+        ModelNode {
             vao,
-            indices: mesh.indices.len() as i32,
+            indices: node.indices.len() as i32,
             shader,
             material: Texture {
                 albedo: albedo as i32,
                 metallic_roughness_ao: metallic_roughness_ao as i32,
             },
             transform: Transform::default(),
-            vertices: mesh.vertices.len() as i32,
+            vertices: node.vertices.len() as i32,
         }
     }
 
@@ -77,7 +86,7 @@ impl OpenGlRenderer {
         self.texture_count
     }
 
-    fn set_mesh_vao(&self, mesh: &Mesh) -> u32 {
+    fn set_mesh_vao(&self, mesh: &MeshNode) -> u32 {
         let mut vertex_array = 0;
         unsafe {
             gl::GenVertexArrays(1, &mut vertex_array);
@@ -391,43 +400,10 @@ pub struct ModelShader<'a> {
     lights: &'a [Light],
     skybox: &'a Skybox,
 }
-impl<'a> ModelShader<'a> {
-    fn create_model_matrix(transform: &Transform) -> math::Matrix4 {
-        let translation = math::Matrix4::translation(&transform.position);
-        let rotation = math::rotation(&transform.rotation);
-        translation * rotation
-    }
-
-    fn create_normal_matrix(model: &math::Matrix4, view: &math::Matrix4) -> math::Matrix4 {
-        (model * view).inverse().transpose()
-    }
-
-    fn set_model_uniforms(&self, model: &Model) {
-        gl_matrix_uniform(model.shader, self.projection, "uProjection");
-        gl_matrix_uniform(model.shader, self.view, "uView");
-        let model_matrix = Self::create_model_matrix(&model.transform);
-        gl_matrix_uniform(model.shader, &model_matrix, "uModel");
-        let normal_matrix = Self::create_normal_matrix(&model_matrix, self.view);
-        gl_matrix_uniform(model.shader, &normal_matrix, "uNormal");
-        gl_int_uniform(model.shader, model.material.albedo, "uMaterial.albedo");
-        gl_int_uniform(
-            model.shader,
-            model.material.metallic_roughness_ao,
-            "uMaterial.metallicRoughnessAo",
-        );
-        gl_float_uniform(model.shader, 0.5, "uExposure");
-    }
-
-    fn set_skybox_uniforms(&self, model: &Model) {
-        gl_int_uniform(model.shader, self.skybox.diffuse, "uIrradianceMap");
-        gl_int_uniform(model.shader, self.skybox.specular, "uPrefilterMap");
-        gl_int_uniform(model.shader, self.skybox.brdf_lut, "uBrdfLut");
-    }
-}
 impl<'a> OpenGlShader for ModelShader<'a> {
     fn render(&self) {
         unsafe {
-            for model in self.models {
+            for model in self.models.iter().flat_map(|m| &m.nodes) {
                 gl::BindVertexArray(model.vao);
                 gl::UseProgram(model.shader);
                 self.set_model_uniforms(model);
@@ -455,6 +431,39 @@ impl<'a> OpenGlShader for ModelShader<'a> {
                 }
             }
         }
+    }
+}
+impl<'a> ModelShader<'a> {
+    fn create_model_matrix(transform: &Transform) -> math::Matrix4 {
+        let translation = math::Matrix4::translation(&transform.position);
+        let rotation = math::rotation(&transform.rotation);
+        translation * rotation
+    }
+
+    fn create_normal_matrix(model: &math::Matrix4, view: &math::Matrix4) -> math::Matrix4 {
+        (model * view).inverse().transpose()
+    }
+
+    fn set_model_uniforms(&self, model: &ModelNode) {
+        gl_matrix_uniform(model.shader, self.projection, "uProjection");
+        gl_matrix_uniform(model.shader, self.view, "uView");
+        let model_matrix = Self::create_model_matrix(&model.transform);
+        gl_matrix_uniform(model.shader, &model_matrix, "uModel");
+        let normal_matrix = Self::create_normal_matrix(&model_matrix, self.view);
+        gl_matrix_uniform(model.shader, &normal_matrix, "uNormal");
+        gl_int_uniform(model.shader, model.material.albedo, "uMaterial.albedo");
+        gl_int_uniform(
+            model.shader,
+            model.material.metallic_roughness_ao,
+            "uMaterial.metallicRoughnessAo",
+        );
+        gl_float_uniform(model.shader, 0.5, "uExposure");
+    }
+
+    fn set_skybox_uniforms(&self, model: &ModelNode) {
+        gl_int_uniform(model.shader, self.skybox.diffuse, "uIrradianceMap");
+        gl_int_uniform(model.shader, self.skybox.specular, "uPrefilterMap");
+        gl_int_uniform(model.shader, self.skybox.brdf_lut, "uBrdfLut");
     }
 }
 

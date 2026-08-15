@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::gfx::*;
 
+mod gltf_tests;
 mod ibl_tests;
 mod render_system_tests;
 

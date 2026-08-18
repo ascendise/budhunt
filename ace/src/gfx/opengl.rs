@@ -54,7 +54,10 @@ impl OpenGlRenderer {
             .iter()
             .map(|n| self.load_mesh_node(n, shader))
             .collect();
-        Model { nodes }
+        Model {
+            nodes,
+            transform: Transform::default(),
+        }
     }
 
     fn load_mesh_node(&mut self, node: &MeshNode, shader: Shader) -> ModelNode {
@@ -76,7 +79,6 @@ impl OpenGlRenderer {
                 albedo: albedo as i32,
                 metallic_roughness_ao: metallic_roughness_ao as i32,
             },
-            transform: Transform::default(),
             vertices: node.vertices.len() as i32,
         }
     }
@@ -403,31 +405,33 @@ pub struct ModelShader<'a> {
 impl<'a> OpenGlShader for ModelShader<'a> {
     fn render(&self) {
         unsafe {
-            for model in self.models.iter().flat_map(|m| &m.nodes) {
-                gl::BindVertexArray(model.vao);
-                gl::UseProgram(model.shader);
-                self.set_model_uniforms(model);
-                self.set_skybox_uniforms(model);
-                let mut point_count = 0;
-                for light in self.lights {
-                    match light {
-                        Light::Point(light) => {
-                            let key = &format!("uPointLights[{point_count}]");
-                            gl_vec3_uniform(model.shader, &light.color, &subkey(key, "color"));
-                            gl_vec3_uniform(
-                                model.shader,
-                                &to_view_space(self.view, &light.position, 1.0),
-                                &subkey(key, "position"),
-                            );
-                            point_count += 1;
+            for model in self.models {
+                for node in &model.nodes {
+                    gl::BindVertexArray(node.vao);
+                    gl::UseProgram(node.shader);
+                    self.set_model_uniforms(node, &model.transform);
+                    self.set_skybox_uniforms(node);
+                    let mut point_count = 0;
+                    for light in self.lights {
+                        match light {
+                            Light::Point(light) => {
+                                let key = &format!("uPointLights[{point_count}]");
+                                gl_vec3_uniform(node.shader, &light.color, &subkey(key, "color"));
+                                gl_vec3_uniform(
+                                    node.shader,
+                                    &to_view_space(self.view, &light.position, 1.0),
+                                    &subkey(key, "position"),
+                                );
+                                point_count += 1;
+                            }
                         }
                     }
-                }
-                gl_int_uniform(model.shader, point_count, "uPointLightsSize");
-                if model.indices > 0 {
-                    gl::DrawElements(gl::TRIANGLES, model.indices, gl::UNSIGNED_INT, null());
-                } else {
-                    gl::DrawArrays(gl::TRIANGLES, 0, model.vertices);
+                    gl_int_uniform(node.shader, point_count, "uPointLightsSize");
+                    if node.indices > 0 {
+                        gl::DrawElements(gl::TRIANGLES, node.indices, gl::UNSIGNED_INT, null());
+                    } else {
+                        gl::DrawArrays(gl::TRIANGLES, 0, node.vertices);
+                    }
                 }
             }
         }
@@ -444,10 +448,10 @@ impl<'a> ModelShader<'a> {
         (model * view).inverse().transpose()
     }
 
-    fn set_model_uniforms(&self, model: &ModelNode) {
+    fn set_model_uniforms(&self, model: &ModelNode, transform: &Transform) {
         gl_matrix_uniform(model.shader, self.projection, "uProjection");
         gl_matrix_uniform(model.shader, self.view, "uView");
-        let model_matrix = Self::create_model_matrix(&model.transform);
+        let model_matrix = Self::create_model_matrix(transform);
         gl_matrix_uniform(model.shader, &model_matrix, "uModel");
         let normal_matrix = Self::create_normal_matrix(&model_matrix, self.view);
         gl_matrix_uniform(model.shader, &normal_matrix, "uNormal");

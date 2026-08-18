@@ -66,7 +66,7 @@ impl RenderSystem {
             Some(Components::Position) or &Default::default()
         );
         let mut model = component!(&model[Components::MODEL], Components::Model).clone();
-        model.transform(position);
+        model.transform.position = &model.transform.position + position;
         model
     }
 
@@ -119,13 +119,7 @@ impl Camera {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Model {
     pub nodes: Vec<ModelNode>,
-}
-impl Model {
-    pub fn transform(&mut self, direction: &math::Vec3) {
-        for node in &mut self.nodes {
-            node.transform(direction);
-        }
-    }
+    pub transform: Transform,
 }
 pub type VertexArray = u32;
 pub type Shader = u32;
@@ -134,14 +128,8 @@ pub struct ModelNode {
     pub vao: VertexArray,
     pub shader: Shader,
     pub material: Texture,
-    pub transform: Transform,
     pub vertices: i32,
     pub indices: i32,
-}
-impl ModelNode {
-    pub fn transform(&mut self, direction: &math::Vec3) {
-        self.transform.position = &self.transform.position + direction;
-    }
 }
 
 pub type Tex = i32;

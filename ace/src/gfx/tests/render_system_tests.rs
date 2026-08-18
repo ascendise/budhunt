@@ -34,12 +34,12 @@ pub fn render_should_pass_objects_to_renderer() {
             albedo: 0,
             metallic_roughness_ao: 0,
         },
-        transform: Default::default(),
         vertices: 3,
         indices: 3,
     };
     let expected_model = Model {
         nodes: vec![expected_model],
+        transform: Default::default(),
     };
     entities.create_entity(vec![Components::Model(expected_model.clone())]);
     let expected_light = PointLight {
@@ -75,14 +75,16 @@ pub fn render_should_transform_models_with_position() {
             albedo: 0,
             metallic_roughness_ao: 0,
         },
+        vertices: 3,
+        indices: 3,
+    };
+    let model = Model {
+        nodes: vec![model],
         transform: Transform {
             position: vec3!(1.0),
             rotation: vec3!(0.0),
         },
-        vertices: 3,
-        indices: 3,
     };
-    let model = Model { nodes: vec![model] };
     entities.create_entity(vec![
         Components::Model(model.clone()),
         Components::Position(vec3!(5.0)),
@@ -92,7 +94,7 @@ pub fn render_should_transform_models_with_position() {
     // Assert
     let frame = spy.frame(0);
     let model = frame.models.first().expect("Model was not rendered!");
-    assert_float_eq!(Vec3 vec3!(6.0), model.nodes[0].transform.position);
+    assert_float_eq!(Vec3 vec3!(6.0), model.transform.position);
 }
 
 #[test_case(Input::Scroll(-10.0), 55.0)]

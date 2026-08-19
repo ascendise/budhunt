@@ -82,7 +82,7 @@ pub fn render_should_transform_models_with_position() {
         nodes: vec![model],
         transform: Transform {
             position: vec3!(1.0),
-            rotation: vec3!(0.0),
+            rotation: math::Matrix4::new(1.0),
         },
     };
     entities.create_entity(vec![

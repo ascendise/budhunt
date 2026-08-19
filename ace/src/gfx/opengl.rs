@@ -440,8 +440,7 @@ impl<'a> OpenGlShader for ModelShader<'a> {
 impl<'a> ModelShader<'a> {
     fn create_model_matrix(transform: &Transform) -> math::Matrix4 {
         let translation = math::Matrix4::translation(&transform.position);
-        let rotation = math::rotation(&transform.rotation);
-        translation * rotation
+        &translation * &transform.rotation
     }
 
     fn create_normal_matrix(model: &math::Matrix4, view: &math::Matrix4) -> math::Matrix4 {

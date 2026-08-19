@@ -139,11 +139,20 @@ pub struct Texture {
     metallic_roughness_ao: Tex,
 }
 
-#[derive(PartialEq, Debug, Clone, Default)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Transform {
     pub position: math::Vec3,
     /// radians
-    pub rotation: math::Vec3,
+    pub rotation: math::Matrix4,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            position: Default::default(),
+            rotation: math::Matrix4::new(1.0),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -1,4 +1,4 @@
-use crate::scripts::MovementScript;
+use crate::scripts::PlayerScript;
 use ace::{
     component,
     gfx::{self},
@@ -196,7 +196,7 @@ fn spawn_player(
         //ace::Components::Position(vec3!(0.0, 0.0, -50.0)),
         ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
         ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
-        ace::Components::Scripts(vec![Box::new(MovementScript::new(clock))]),
+        ace::Components::Scripts(vec![Box::new(PlayerScript::new(clock))]),
         ace::Components::Player,
         ace::Components::Collider(collider),
         ace::Components::Model(model),

@@ -1,4 +1,4 @@
-mod movement_script_tests;
+mod player_script_tests;
 
 pub struct StubClock {
     fixed_delta: f32,

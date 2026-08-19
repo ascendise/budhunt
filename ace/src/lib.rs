@@ -284,6 +284,10 @@ impl<'a, T: Component> Entity<'a, T> {
     pub fn id(&self) -> usize {
         self.id
     }
+
+    pub fn get(&self, component_type: u32) -> Option<&T> {
+        self.components.get(&component_type).copied()
+    }
 }
 impl<'a, T: Component> Index<u32> for Entity<'a, T> {
     type Output = T;

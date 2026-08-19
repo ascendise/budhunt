@@ -52,28 +52,47 @@ pub fn projection(fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Matrix4 {
     .into()
 }
 
+/// Calculates translation matrix to transform models from world to view space
 pub fn look_at(eye: &Vec3, center: &Vec3, up: &Vec3) -> Matrix4 {
     let direction = (eye - center).normalize();
-    let right = up.cross(&direction).normalize();
+    let rotation = look_at_rotation(&direction, up);
+    let translation = look_at_translation(eye);
+    rotation * translation
+}
+
+fn look_at_rotation(direction: &Vec3, up: &Vec3) -> Matrix4 {
+    let right = up.cross(direction).normalize();
     let up = direction.cross(&right);
-    let lhs: Matrix4 = [
+    let rotation: Matrix4 = [
         [right.x, right.y, right.z, 0.0],
         [up.x, up.y, up.z, 0.0],
         [direction.x, direction.y, direction.z, 0.0],
         [0.0, 0.0, 0.0, 1.0],
     ]
     .into();
-    let mut rhs = Matrix4::new(1.0);
-    rhs[0][3] = -eye.x;
-    rhs[1][3] = -eye.y;
-    rhs[2][3] = -eye.z;
-    lhs * rhs
+    rotation
+}
+
+fn look_at_translation(eye: &Vec3) -> Matrix4 {
+    let mut translation = Matrix4::new(1.0);
+    translation[0][3] = -eye.x;
+    translation[1][3] = -eye.y;
+    translation[2][3] = -eye.z;
+    translation
+}
+
+/// Calculates rotation matrix for transforming models based on camera direction
+pub fn rotation_fpv(direction: &Vec3) -> Matrix4 {
+    let up = vec3!(0.0, 1.0, 0.0);
+    let direction = direction.normalize();
+    look_at_rotation(&-direction, &up).inverse()
 }
 
 pub fn radians(degree: f32) -> f32 {
     PI / 180.0 * degree
 }
 
+/// Creates a rotation matrix for transforming a model around the three axises x,y,z
 pub fn rotation(radians: &Vec3) -> Matrix4 {
     let mut rotation = Matrix4::new(1.0);
     rotation = rotation * rotation_x(radians.x);

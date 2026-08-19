@@ -3,10 +3,10 @@ use ace::{component, event, math, vec2, vec3};
 #[cfg(test)]
 mod tests;
 
-pub struct MovementScript {
+pub struct PlayerScript {
     clock: Box<dyn ace::Clock>,
 }
-impl ace::Script for MovementScript {
+impl ace::Script for PlayerScript {
     fn run(
         &self,
         player: &ace::Entity<'_, ace::Components>,
@@ -19,20 +19,17 @@ impl ace::Script for MovementScript {
             .map(|i| component!(i, ace::Input::MoveCursor).clone())
             .unwrap_or(vec2!(0.0));
         let (move_direction, camera_direction) = self.turn_camera(&cursor_offset);
-        let velocity = self.get_camera_velocity(&inputs, &move_direction);
-        let mut rigid_body = component!(
-            &player[ace::Components::RIGIDBODY],
-            ace::Components::RigidBody
-        )
-        .clone();
-        rigid_body.set_velocity(velocity);
+        let rigid_body = self.set_player_velocity(player, inputs, move_direction);
+        let mut model = component!(&player[ace::Components::MODEL], ace::Components::Model).clone();
+        model.transform.rotation = math::rotation_fpv(&camera_direction);
         vec![
-            ace::Components::Direction(camera_direction),
+            ace::Components::Direction(camera_direction.clone()),
             ace::Components::RigidBody(rigid_body),
+            ace::Components::Model(model.clone()),
         ]
     }
 }
-impl MovementScript {
+impl PlayerScript {
     pub fn new(clock: Box<dyn ace::Clock>) -> Self {
         Self { clock }
     }
@@ -54,6 +51,22 @@ impl MovementScript {
         }
         .normalize();
         (move_dir, turn_dir)
+    }
+
+    fn set_player_velocity(
+        &self,
+        player: &ace::Entity<'_, ace::Components>,
+        inputs: Vec<ace::Input>,
+        move_direction: math::Vec3,
+    ) -> ace::physics::RigidBody {
+        let velocity = self.get_camera_velocity(&inputs, &move_direction);
+        let mut rigid_body = component!(
+            &player[ace::Components::RIGIDBODY],
+            ace::Components::RigidBody
+        )
+        .clone();
+        rigid_body.set_velocity(velocity);
+        rigid_body
     }
 
     fn get_camera_velocity(

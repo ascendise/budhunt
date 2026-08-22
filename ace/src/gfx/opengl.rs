@@ -11,34 +11,78 @@ use crate::{gfx::*, vec4};
 pub struct OpenGlRenderer {
     texture_count: u32,
     skybox: Option<Skybox>,
+    line_vao: VertexArray,
 }
 impl Renderer for OpenGlRenderer {
-    fn render(&self, projection: &Projection, camera: &Camera, models: &[Model], lights: &[Light]) {
+    fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
         unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT) };
         let projection = &projection.to_projection_matrix();
         let view = &camera.to_view_matrix();
         let skybox = self.skybox.as_ref().expect("No skybox set!");
+        let models: Vec<Model> = renderables
+            .iter()
+            .filter_map(|m| maybe_component!(m, Renderable::Model))
+            .cloned()
+            .collect();
+        let lights: Vec<Light> = renderables
+            .iter()
+            .filter_map(|m| maybe_component!(m, Renderable::Light))
+            .cloned()
+            .collect();
         let shader = ModelShader {
             projection,
             view,
-            models,
-            lights,
+            models: &models,
+            lights: &lights,
             skybox,
         };
         shader.render();
         self.render_skybox(projection, view);
+        self.render_lines(&camera.position, projection, view, renderables);
     }
 }
 impl OpenGlRenderer {
+    pub const LINE: [math::Vec3; 2] = [vec3!(0.0), vec3!(0.0, 0.0, 1.0)];
+
     pub fn init() -> Self {
         unsafe {
             gl::ClearColor(0.25, 0.25, 0.25, 1.0);
             gl::Enable(gl::DEPTH_TEST);
             gl::Enable(gl::FRAMEBUFFER_SRGB);
+            let line_vao = Self::init_line();
+            Self {
+                texture_count: 0,
+                skybox: None,
+                line_vao,
+            }
         }
-        Self {
-            texture_count: 0,
-            skybox: None,
+    }
+
+    fn init_line() -> VertexArray {
+        unsafe {
+            let mut vertex_array = 0;
+            gl::GenVertexArrays(1, &mut vertex_array);
+            gl::BindVertexArray(vertex_array);
+            let mut buffer_object = 0;
+            gl::GenBuffers(1, &mut buffer_object);
+            gl::BindBuffer(gl::ARRAY_BUFFER, buffer_object);
+            let mesh_size = size_of_val(&Self::LINE) as isize;
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                mesh_size,
+                Self::LINE.as_ptr() as *const _,
+                gl::STATIC_DRAW,
+            );
+            gl::VertexAttribPointer(
+                0,
+                3,
+                gl::FLOAT,
+                gl::FALSE,
+                size_of::<math::Vec3>() as i32,
+                null(),
+            );
+            gl::EnableVertexAttribArray(0);
+            vertex_array
         }
     }
 
@@ -368,12 +412,33 @@ impl OpenGlRenderer {
             skybox_shader.render();
         }
     }
+
+    fn render_lines(
+        &self,
+        camera_position: &math::Vec3,
+        projection: &math::Matrix4,
+        view: &math::Matrix4,
+        renderables: &[Renderable],
+    ) {
+        let lines: Vec<Line> = renderables
+            .iter()
+            .filter_map(|r| maybe_component!(r, Renderable::Line))
+            .cloned()
+            .collect();
+        let shader = LineShader {
+            lines: &lines,
+            projection,
+            view,
+            line_vao: self.line_vao,
+        };
+        shader.render();
+    }
 }
 
-pub trait OpenGlShader {
+trait OpenGlShader {
     fn render(&self);
 }
-pub struct SkyboxShader<'a> {
+struct SkyboxShader<'a> {
     view: &'a math::Matrix4,
     projection: &'a math::Matrix4,
     skybox: &'a Skybox,
@@ -395,7 +460,7 @@ impl<'a> OpenGlShader for SkyboxShader<'a> {
         }
     }
 }
-pub struct ModelShader<'a> {
+struct ModelShader<'a> {
     projection: &'a math::Matrix4,
     view: &'a math::Matrix4,
     models: &'a [Model],
@@ -468,6 +533,36 @@ impl<'a> ModelShader<'a> {
         gl_int_uniform(model.shader, self.skybox.specular, "uPrefilterMap");
         gl_int_uniform(model.shader, self.skybox.brdf_lut, "uBrdfLut");
     }
+}
+struct LineShader<'a> {
+    lines: &'a [Line],
+    line_vao: VertexArray,
+    projection: &'a math::Matrix4,
+    view: &'a math::Matrix4,
+}
+impl<'a> OpenGlShader for LineShader<'a> {
+    fn render(&self) {
+        unsafe {
+            gl::Enable(gl::LINE_SMOOTH);
+            for line in self.lines {
+                gl::BindVertexArray(self.line_vao);
+                gl::UseProgram(line.shader);
+                gl_matrix_uniform(line.shader, self.projection, "uProjection");
+                gl_matrix_uniform(line.shader, self.view, "uView");
+                let model_matrix = &math::Matrix4::translation(&line.transform.position)
+                    * &line.transform.rotation;
+                gl_matrix_uniform(line.shader, &model_matrix, "uModel");
+                gl_vec3_uniform(line.shader, &vec3!(1.0, 0.0, 0.0), "uColor");
+                gl::LineWidth(8.0);
+                gl::DrawArrays(gl::LINES, 0, Self::LINE_VERTICES_LEN);
+            }
+            gl::Disable(gl::LINE_SMOOTH);
+        }
+    }
+}
+
+impl<'a> LineShader<'a> {
+    pub const LINE_VERTICES_LEN: i32 = 2;
 }
 
 fn gl_matrix_uniform(shader: Shader, matrix: &math::Matrix4, key: &str) {

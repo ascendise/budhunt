@@ -17,91 +17,6 @@ use crate::physics::CollisionEvent;
 #[cfg(test)]
 mod tests;
 
-#[macro_export]
-/// Used to quickly map a Component enum variant to it's inner value
-///
-/// # Usage
-/// ```
-/// use ace::component;
-/// // used for implementing custom components
-/// use ace_proc_macros::Component;
-/// use ace::Component;
-///
-/// #[derive(Component, PartialEq, Clone, Debug)]
-/// enum MyComponents { CompA(usize), CompB(f32), CompC}
-///
-/// // Map component to known type
-/// let comp: MyComponents = MyComponents::CompA(42);
-/// let value: usize = component!(comp, MyComponents::CompA);
-/// assert_eq!(42, value);
-///
-/// // Map option to known type
-/// let comp = Some(MyComponents::CompA(42));
-/// let value: usize = component!(comp, Some(MyComponents::CompA));
-/// assert_eq!(42, value);
-///
-/// // Map option to known type or return default
-/// let comp = None;
-/// let value: usize = component!(comp, Some(MyComponents::CompA) or 42);
-/// assert_eq!(42, value);
-/// ```
-/// # Panics
-/// If you assume the wrong component variant, the macro will panic
-macro_rules! component {
-    ($v:expr, Some($e:path)) => {
-        match $v {
-            Some($e(v)) => v,
-            _ => panic!("this is not a {}", stringify!($e)),
-        }
-    };
-    ($v:expr, Some($e:path) or $default:expr) => {
-        match $v {
-            Some($e(v)) => v,
-            _ => $default,
-        }
-    };
-    ($v:expr, $e:path) => {
-        match $v {
-            $e(v) => v,
-            _ => panic!("this is not a {}", stringify!($e)),
-        }
-    };
-}
-
-#[macro_export]
-/// Transforms an [Option<Component>] into an [Option<T>]. If the component does not match,
-/// [maybe_component] returns [None]
-///
-/// # Usage
-/// ```
-/// use ace::maybe_component;
-/// // used for implementing custom components
-/// use ace_proc_macros::Component;
-/// use ace::Component;
-///
-/// #[derive(Component, PartialEq, Clone, Debug)]
-/// enum MyComponents { CompA(usize), CompB(f32), CompC}
-///
-/// // Map component with matching type
-/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
-/// let value: Option<usize> = maybe_component!(comp, MyComponents::CompA);
-/// assert_eq!(Some(42), value);
-///
-/// // Map component with mismatching type
-/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
-/// let value: Option<f32> = maybe_component!(comp, MyComponents::CompB);
-/// assert_eq!(None, value);
-/// ```
-///
-macro_rules! maybe_component {
-    ($v:expr, $e:path) => {
-        match $v {
-            Some($e(v)) => Some(v),
-            _ => None,
-        }
-    };
-}
-
 pub struct World {
     entities: Entities,
     systems: Vec<Box<dyn System>>,
@@ -345,6 +260,7 @@ pub enum Components {
     Direction(math::Vec3),
     Model(gfx::Model),
     Light(gfx::Light),
+    Line(gfx::Line),
     Scripts(Vec<Box<dyn scripts::Script>>),
     Player,
     Collider(physics::Collider),
@@ -391,4 +307,105 @@ pub enum Input {
 pub enum Event {
     Input(Input),
     Collision(CollisionEvent),
+}
+
+#[macro_export]
+/// Used to quickly map a Component enum variant to it's inner value
+///
+/// # Usage
+/// ```
+/// use ace::component;
+/// // used for implementing custom components
+/// use ace_proc_macros::Component;
+/// use ace::Component;
+///
+/// #[derive(Component, PartialEq, Clone, Debug)]
+/// enum MyComponents { CompA(usize), CompB(f32), CompC}
+///
+/// // Map component to known type
+/// let comp: MyComponents = MyComponents::CompA(42);
+/// let value: usize = component!(comp, MyComponents::CompA);
+/// assert_eq!(42, value);
+///
+/// // Map option to known type
+/// let comp = Some(MyComponents::CompA(42));
+/// let value: usize = component!(comp, Some(MyComponents::CompA));
+/// assert_eq!(42, value);
+///
+/// // Map option to known type or return default
+/// let comp = None;
+/// let value: usize = component!(comp, Some(MyComponents::CompA) or 42);
+/// assert_eq!(42, value);
+/// ```
+/// # Panics
+/// If you assume the wrong component variant, the macro will panic
+macro_rules! component {
+    ($v:expr, Some($e:path)) => {
+        match $v {
+            Some($e(v)) => v,
+            _ => panic!("this is not a {}", stringify!($e)),
+        }
+    };
+    ($v:expr, Some($e:path) or $default:expr) => {
+        match $v {
+            Some($e(v)) => v,
+            _ => $default,
+        }
+    };
+    ($v:expr, $e:path) => {
+        match $v {
+            $e(v) => v,
+            _ => panic!("this is not a {}", stringify!($e)),
+        }
+    };
+}
+
+#[macro_export]
+/// Transforms a [Component] into an [Option<T>]. If the component does not match,
+/// [maybe_component] returns [None]
+///
+/// # Usage
+/// ```
+/// use ace::maybe_component;
+/// // used for implementing custom components
+/// use ace_proc_macros::Component;
+/// use ace::Component;
+///
+/// #[derive(Component, PartialEq, Clone, Debug)]
+/// enum MyComponents { CompA(usize), CompB(f32), CompC}
+///
+/// // Map Option with matching type
+/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
+/// let value: Option<usize> = maybe_component!(comp, Some(MyComponents::CompA));
+/// assert_eq!(Some(42), value);
+///
+/// // Map Option with mismatching type
+/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
+/// let value: Option<f32> = maybe_component!(comp, Some(MyComponents::CompB));
+/// assert_eq!(None, value);
+///
+/// // Map Component with matching type
+/// let comp: MyComponents = MyComponents::CompA(42);
+/// let value: Option<usize> = maybe_component!(comp, MyComponents::CompA);
+/// assert_eq!(Some(42), value);
+///
+/// // Map Component with mismatching type
+/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
+/// let value: Option<f32> = maybe_component!(comp, Some(MyComponents::CompB));
+/// assert_eq!(None, value);
+/// ```
+///
+macro_rules! maybe_component {
+    ($v:expr, Some($e:path)) => {
+        match $v {
+            Some($e(v)) => Some(v),
+            _ => None,
+        }
+    };
+    ($v:expr, $e:path) => {
+        match $v {
+            $e(v) => Some(v),
+            _ => None,
+        }
+    };
 }

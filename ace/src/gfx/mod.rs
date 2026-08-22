@@ -17,17 +17,25 @@ impl System for RenderSystem {
         let inputs = events.get_events(|e| event!(e, Event::Input));
         Self::handle_inputs(&inputs, &mut projection);
         let camera = Self::find_camera(entities);
-        let models: Vec<Model> = entities
+        let models: Vec<Renderable> = entities
             .get_entities(Components::MODEL)
             .iter()
-            .map(|m| Self::get_model(m, entities))
+            .map(|m| Renderable::Model(Self::get_model(m, entities)))
             .collect();
-        let lights: Vec<Light> = entities
+        let mut lights: Vec<Renderable> = entities
             .get_entities(Components::LIGHT)
             .iter()
-            .map(|l| Self::get_light(l, entities))
+            .map(|l| Renderable::Light(Self::get_light(l, entities)))
             .collect();
-        self.renderer.render(&projection, &camera, &models, &lights);
+        let mut renderables = models;
+        renderables.append(&mut lights);
+        let mut lines: Vec<Renderable> = entities
+            .get_entities(Components::LINE)
+            .iter()
+            .map(|l| Renderable::Line(Self::get_line(l, entities)))
+            .collect();
+        renderables.append(&mut lines);
+        self.renderer.render(&projection, &camera, &renderables);
     }
 }
 impl RenderSystem {
@@ -66,6 +74,7 @@ impl RenderSystem {
             Some(Components::Position) or &Default::default()
         );
         let mut model = component!(&model[Components::MODEL], Components::Model).clone();
+        //TODO: Handle rotation via direction
         model.transform.position = &model.transform.position + position;
         model
     }
@@ -75,17 +84,23 @@ impl RenderSystem {
             &entities[Components::POSITION][light.id()],
             Some(Components::Position) or &Default::default()
         );
-        let direction = component!(
-            &entities[Components::DIRECTION][light.id()],
-            Some(Components::Direction) or &Default::default()
-        );
         let mut light = component!(&light[Components::LIGHT], Components::Light).clone();
-        light.transform(position, direction);
+        light.transform(position);
         light
+    }
+
+    fn get_line(line: &Entity<'_, Components>, entities: &Entities) -> Line {
+        let position = component!(
+            &entities[Components::POSITION][line.id()],
+            Some(Components::Position) or &Default::default()
+        );
+        let mut line = component!(&line[Components::LINE], Components::Line).clone();
+        line.transform.position = &line.transform.position + position;
+        line
     }
 }
 pub trait Renderer {
-    fn render(&self, projection: &Projection, camera: &Camera, model: &[Model], lights: &[Light]);
+    fn render(&self, projection: &Projection, camera: &Camera, render_targets: &[Renderable]);
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -116,6 +131,14 @@ impl Camera {
         math::look_at(&self.position, &center, &up)
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum Renderable {
+    Model(Model),
+    Light(Light),
+    Line(Line),
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Model {
     pub nodes: Vec<ModelNode>,
@@ -143,7 +166,7 @@ pub struct Texture {
 pub struct Transform {
     pub position: math::Vec3,
     /// radians
-    pub rotation: math::Matrix4,
+    pub rotation: math::Matrix4, //TODO: Turn into enum Rotation{Eular(Angles), FirstPerson(CameraDirection)}?
 }
 
 impl Default for Transform {
@@ -160,7 +183,7 @@ pub enum Light {
     Point(PointLight),
 }
 impl Light {
-    pub fn transform(&mut self, position: &math::Vec3, _: &math::Vec3) {
+    pub fn transform(&mut self, position: &math::Vec3) {
         match self {
             Light::Point(point_light) => point_light.position = &point_light.position + position,
         }
@@ -302,6 +325,12 @@ fn read_texture(images: &[gltf::image::Data], texture: gltf::Texture<'_>) -> Ima
         width: texture.width,
         height: texture.height,
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Line {
+    pub transform: Transform,
+    pub shader: Shader,
 }
 
 pub struct Mesh {

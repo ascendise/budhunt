@@ -86,8 +86,11 @@ impl System for CollisionSystem {
             let mut collision_entity = CollisionEntity {
                 collider: component!(&collider[Components::COLLIDER], Components::Collider).clone(),
                 position: component!(&collider[Components::POSITION], Components::Position).clone(),
-                physics: maybe_component!(&rigid_bodies[collider.id()], Components::RigidBody)
-                    .cloned(),
+                physics: maybe_component!(
+                    &rigid_bodies[collider.id()],
+                    Some(Components::RigidBody)
+                )
+                .cloned(),
             };
             for other in colliders.iter().skip(collider.id() + 1) {
                 let mut other_collision_entity = CollisionEntity {
@@ -95,8 +98,11 @@ impl System for CollisionSystem {
                         .clone(),
                     position: component!(&other[Components::POSITION], Components::Position)
                         .clone(),
-                    physics: maybe_component!(&rigid_bodies[other.id()], Components::RigidBody)
-                        .cloned(),
+                    physics: maybe_component!(
+                        &rigid_bodies[other.id()],
+                        Some(Components::RigidBody)
+                    )
+                    .cloned(),
                 };
                 if collision_entity.intersects(&other_collision_entity) {
                     let collider_collision_point =

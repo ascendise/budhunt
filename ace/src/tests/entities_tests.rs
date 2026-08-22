@@ -1,16 +1,7 @@
-use crate::Component;
 use crate::Entities;
 use crate::Entity;
+use crate::tests::TestComponents;
 use pretty_assertions::assert_eq;
-
-#[derive(Component, PartialEq, Clone, Debug)]
-pub enum TestComponents {
-    Number(u32),
-    Decimal(f32),
-    #[allow(dead_code)]
-    Bool(bool),
-    Marker,
-}
 
 #[test]
 pub fn create_entity_should_create_new_buckets_for_components() {

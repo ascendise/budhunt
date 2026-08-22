@@ -18,6 +18,8 @@ static FRAGMENT_SHADER_PBR: &str = include_str!("../shaders/pbr.fs.glsl");
 static TONEMAPPING_SHADER: &str = include_str!("../shaders/tonemapping.glsl");
 static VERTEX_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.vs.glsl");
 static FRAGMENT_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.fs.glsl");
+static VERTEX_SHADER_LINE: &str = include_str!("../shaders/line.vs.glsl");
+static FRAGMENT_SHADER_LINE: &str = include_str!("../shaders/line.fs.glsl");
 
 fn box_collider(width: f32, height: f32, depth: f32) -> ace::physics::Collider {
     let vertices = vec![
@@ -38,7 +40,7 @@ fn main() {
     let window = setup_window(&mut glfw);
     let mut renderer = gfx::opengl::OpenGlRenderer::init();
     set_skybox(&mut renderer);
-    let shader_program = renderer
+    let pbr_program = renderer
         .compile_shader(VERTEX_SHADER_PBR, FRAGMENT_SHADER_PBR, TONEMAPPING_SHADER)
         .expect("Failed to compile model shader");
     let mut entities = ace::Entities::empty();
@@ -46,21 +48,28 @@ fn main() {
     let collider = box_collider(0.5, 2.0, 0.5);
     spawn_player(
         &mut renderer,
-        shader_program,
+        pbr_program,
         &mut entities,
         clock.clone(),
         collider,
     );
-    spawn_targets(&mut renderer, shader_program, &mut entities);
+    spawn_targets(&mut renderer, pbr_program, &mut entities);
     spawn_point_lights(&mut entities);
-    spawn_floor(&mut renderer, shader_program, &mut entities);
+    spawn_floor(&mut renderer, pbr_program, &mut entities);
+    let lines_program = renderer
+        .compile_shader(VERTEX_SHADER_LINE, FRAGMENT_SHADER_LINE, TONEMAPPING_SHADER)
+        .expect("Failed to compile model shader");
+    entities.create_entity(vec![ace::Components::Line(gfx::Line {
+        shader: lines_program,
+        transform: Default::default(),
+    })]);
     let window = Arc::new(Mutex::new(window));
     let mut world = setup_world(renderer, entities, clock, &window);
-    print_opengl_errors();
     while !window.lock().unwrap().should_close() {
         world.run_frame();
         window.lock().unwrap().swap_buffers();
         glfw.poll_events();
+        print_opengl_errors();
     }
 }
 

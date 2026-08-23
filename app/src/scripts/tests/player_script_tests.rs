@@ -34,13 +34,13 @@ pub fn run_should_change_player_velocity_on_matching_input(
     let direction = Components::Direction(vec3!(0.0, 0.0, 1.0));
     let rigid_body = Components::RigidBody(Default::default());
     let model = mock_model();
-    let camera_entity = Entity::new(0, vec![&position, &direction, &rigid_body, &model]);
+    let player = Entity::new(0, vec![&position, &direction, &rigid_body, &model]);
     // Act
     let events = Events::empty();
     let move_cursor = Input::MoveCursor(vec2!(90.0, 0.0));
     events.push_event(Event::Input(move_cursor));
     events.push_event(Event::Input(input));
-    let updated_components = sut.run(&camera_entity, &events);
+    let updated_components = sut.run(&player, &events);
     // Assert
     let rigid_body = component!(&updated_components[1], Components::RigidBody);
     assert_float_eq!(Vec3 & expected_position, rigid_body.velocity().unwrap())
@@ -61,12 +61,12 @@ pub fn run_should_turn_camera_and_model_on_matching_input(
     let direction = Components::Direction(vec3!(0.0, 0.0, 1.0));
     let rigid_body = Components::RigidBody(Default::default());
     let model = mock_model();
-    let camera_entity = Entity::new(0, vec![&position, &direction, &rigid_body, &model]);
+    let player = Entity::new(0, vec![&position, &direction, &rigid_body, &model]);
     // Act
     let move_cursor = Input::MoveCursor(cursor_offset);
     let events = Events::empty();
     events.push_event(Event::Input(move_cursor));
-    let updated_components = sut.run(&camera_entity, &events);
+    let updated_components = sut.run(&player, &events);
     // Assert
     let camera_direction = component!(&updated_components[0], Components::Direction);
     assert_float_eq!(Vec3 & expected_camera_direction, camera_direction);
@@ -75,4 +75,22 @@ pub fn run_should_turn_camera_and_model_on_matching_input(
         Matrix4 model.transform.rotation,
         math::rotation_fpv(camera_direction)
     );
+}
+
+#[test]
+pub fn run_should_spawn_ray_when_player_presses_shoot() {
+    // Arrange
+    let clock = Box::new(StubClock { fixed_delta: 0.1 });
+    let sut = setup(clock);
+    let position = Components::Position(vec3!(10.0, 5.0, 12.0));
+    let direction = Components::Direction(vec3!(0.0, 0.0, 1.0));
+    let rigid_body = Components::RigidBody(Default::default());
+    let model = mock_model();
+    let player = Entity::new(0, vec![&position, &direction, &rigid_body, &model]);
+    // Act
+    let events = Events::empty();
+    events.push_event(Event::Input(Input::Shoot));
+    let _ = sut.run(&player, &events);
+    // Assert
+    //
 }

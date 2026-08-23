@@ -139,7 +139,7 @@ impl<T: Component, const E: usize> Entities<T, E> {
     ///     component!(&entities[Components::POSITION][id], Some(Components::Position)));
     /// ```
     pub fn update(&self) -> Update<T> {
-        Update::new()
+        Update::new(self.entities_count)
     }
 
     pub fn commit(&mut self, mut updates: Update<T>) {
@@ -153,6 +153,7 @@ impl<T: Component, const E: usize> Entities<T, E> {
                 bucket[entity_id] = Some(value);
             }
         }
+        self.entities_count = updates.entities_count;
     }
     fn get_or_create_bucket(&mut self, type_id: u32) -> &mut [Option<T>] {
         match self.components.entry(type_id) {
@@ -215,16 +216,37 @@ impl<'a, T: Component> Index<u32> for Entity<'a, T> {
 }
 #[derive(Default)]
 pub struct Update<T: Component> {
+    entities_count: usize,
     updates: IndexMap<u32, IndexMap<usize, T>>,
 }
 impl<T: Component> Update<T> {
-    pub fn new() -> Self {
+    fn new(entities_count: usize) -> Self {
         Self {
+            entities_count,
             updates: IndexMap::new(),
         }
     }
 
+    pub fn spawn(&mut self, components: Vec<T>) -> usize {
+        let id = self.entities_count;
+        for component in components {
+            self.set_unchecked(id, component);
+        }
+        self.entities_count += 1;
+        id
+    }
+
     pub fn set(&mut self, entity_id: usize, component: T) -> &mut Self {
+        if entity_id >= self.entities_count {
+            panic!(
+                "entity id outside expected range 0..{}",
+                self.entities_count - 1
+            )
+        }
+        self.set_unchecked(entity_id, component)
+    }
+
+    fn set_unchecked(&mut self, entity_id: usize, component: T) -> &mut Self {
         let type_id = component.get_type();
         match self.updates.entry(type_id) {
             Entry::Occupied(mut entry) => {
@@ -301,6 +323,7 @@ pub enum Input {
     MoveCursor(math::Vec2),
     /// y offset
     Scroll(f32),
+    Shoot,
 }
 
 #[derive(Debug, Clone, PartialEq)]

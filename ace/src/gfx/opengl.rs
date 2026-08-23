@@ -42,7 +42,7 @@ impl Renderer for OpenGlRenderer {
     }
 }
 impl OpenGlRenderer {
-    pub const LINE: [math::Vec3; 2] = [vec3!(0.0), vec3!(0.0, 0.0, 1.0)];
+    pub const LINE: [math::Vec3; 2] = [vec3!(0.0), vec3!(0.0, 0.0, -100.0)];
 
     pub fn init() -> Self {
         unsafe {

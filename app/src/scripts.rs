@@ -1,4 +1,8 @@
-use ace::{component, event, math, vec2, vec3};
+use ace::{
+    component, event,
+    math::{self, rotation_fpv},
+    vec2, vec3,
+};
 
 #[cfg(test)]
 mod tests;
@@ -37,7 +41,7 @@ impl ace::Script for PlayerScript {
             ace::Components::Position
         )
         .clone();
-        self.handle_shooting(&inputs, updates, position);
+        self.handle_shooting(&inputs, updates, &position, &camera_direction);
     }
 }
 impl PlayerScript {
@@ -117,14 +121,15 @@ impl PlayerScript {
         &self,
         inputs: &[ace::Input],
         updates: &mut ace::Update<ace::Components>,
-        position: math::Vec3,
+        position: &math::Vec3,
+        direction: &math::Vec3,
     ) {
         for input in inputs {
             if let ace::Input::Shoot = input {
                 let bullet = ace::gfx::Line {
                     transform: ace::gfx::Transform {
                         position: position.clone(),
-                        rotation: ace::math::Matrix4::new(1.0),
+                        rotation: rotation_fpv(direction),
                     },
                     shader: self.bullet_shader,
                 };

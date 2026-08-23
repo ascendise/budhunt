@@ -214,6 +214,7 @@ impl<'a, T: Component> Index<u32> for Entity<'a, T> {
             .expect("Tried to access a component missing in this entity")
     }
 }
+
 #[derive(Default)]
 pub struct Update<T: Component> {
     entities_count: usize,

@@ -4,6 +4,7 @@ use ace::{component, event, math, vec2, vec3};
 mod tests;
 
 pub struct PlayerScript {
+    bullet_shader: ace::gfx::Shader,
     clock: Box<dyn ace::Clock>,
 }
 impl ace::Script for PlayerScript {
@@ -11,7 +12,8 @@ impl ace::Script for PlayerScript {
         &self,
         player: &ace::Entity<'_, ace::Components>,
         events: &ace::Events,
-    ) -> Vec<ace::Components> {
+        updates: &mut ace::Update<ace::Components>,
+    ) {
         let inputs = events.get_events(|e| event!(e, ace::Event::Input));
         let cursor_offset = inputs
             .iter()
@@ -19,19 +21,35 @@ impl ace::Script for PlayerScript {
             .map(|i| component!(i, ace::Input::MoveCursor).clone())
             .unwrap_or(vec2!(0.0));
         let (move_direction, camera_direction) = self.turn_camera(&cursor_offset);
-        let rigid_body = self.set_player_velocity(player, inputs, move_direction);
+        let rigid_body = self.set_player_velocity(player, &inputs, move_direction);
         let mut model = component!(&player[ace::Components::MODEL], ace::Components::Model).clone();
         model.transform.rotation = math::rotation_fpv(&camera_direction);
-        vec![
-            ace::Components::Direction(camera_direction.clone()),
-            ace::Components::RigidBody(rigid_body),
-            ace::Components::Model(model.clone()),
-        ]
+        updates.set_batch(
+            player.id(),
+            vec![
+                ace::Components::Direction(camera_direction.clone()),
+                ace::Components::RigidBody(rigid_body),
+                ace::Components::Model(model.clone()),
+            ],
+        );
+        let position = component!(
+            &player[ace::Components::POSITION],
+            ace::Components::Position
+        )
+        .clone();
+        self.handle_shooting(&inputs, updates, position);
     }
 }
 impl PlayerScript {
     pub fn new(clock: Box<dyn ace::Clock>) -> Self {
-        Self { clock }
+        Self {
+            bullet_shader: 0,
+            clock,
+        }
+    }
+
+    pub fn set_bullet_shader(&mut self, shader: ace::gfx::Shader) {
+        self.bullet_shader = shader;
     }
 
     /// Moves camera on xyz-axis and returns movement direction and current view direction
@@ -56,10 +74,10 @@ impl PlayerScript {
     fn set_player_velocity(
         &self,
         player: &ace::Entity<'_, ace::Components>,
-        inputs: Vec<ace::Input>,
+        inputs: &[ace::Input],
         move_direction: math::Vec3,
     ) -> ace::physics::RigidBody {
-        let velocity = self.get_camera_velocity(&inputs, &move_direction);
+        let velocity = self.get_camera_velocity(inputs, &move_direction);
         let mut rigid_body = component!(
             &player[ace::Components::RIGIDBODY],
             ace::Components::RigidBody
@@ -93,5 +111,25 @@ impl PlayerScript {
             movement = &(&movement / 2.0) - &strafe;
         }
         movement * speed
+    }
+
+    fn handle_shooting(
+        &self,
+        inputs: &[ace::Input],
+        updates: &mut ace::Update<ace::Components>,
+        position: math::Vec3,
+    ) {
+        for input in inputs {
+            if let ace::Input::Shoot = input {
+                let bullet = ace::gfx::Line {
+                    transform: ace::gfx::Transform {
+                        position: position.clone(),
+                        rotation: ace::math::Matrix4::new(1.0),
+                    },
+                    shader: self.bullet_shader,
+                };
+                updates.spawn(vec![ace::Components::Line(bullet)]);
+            }
+        }
     }
 }

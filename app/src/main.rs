@@ -46,9 +46,13 @@ fn main() {
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
     let collider = box_collider(0.5, 2.0, 0.5);
+    let lines_program = renderer
+        .compile_shader(VERTEX_SHADER_LINE, FRAGMENT_SHADER_LINE, TONEMAPPING_SHADER)
+        .expect("Failed to compile model shader");
     spawn_player(
         &mut renderer,
         pbr_program,
+        lines_program,
         &mut entities,
         clock.clone(),
         collider,
@@ -56,13 +60,6 @@ fn main() {
     spawn_targets(&mut renderer, pbr_program, &mut entities);
     spawn_point_lights(&mut entities);
     spawn_floor(&mut renderer, pbr_program, &mut entities);
-    let lines_program = renderer
-        .compile_shader(VERTEX_SHADER_LINE, FRAGMENT_SHADER_LINE, TONEMAPPING_SHADER)
-        .expect("Failed to compile model shader");
-    entities.create_entity(vec![ace::Components::Line(gfx::Line {
-        shader: lines_program,
-        transform: Default::default(),
-    })]);
     let window = Arc::new(Mutex::new(window));
     let mut world = setup_world(renderer, entities, clock, &window);
     while !window.lock().unwrap().should_close() {
@@ -194,18 +191,21 @@ fn spawn_floor(
 
 fn spawn_player(
     renderer: &mut gfx::opengl::OpenGlRenderer,
-    shader_program: gfx::Shader,
+    pbr_shader: gfx::Shader,
+    bullet_shader: gfx::Shader,
     entities: &mut ace::Entities,
     clock: Box<ace::glfw_input::GlfwClock>,
     collider: ace::physics::Collider,
 ) {
     let (mesh, _) = gfx::load_glb_file(Path::new("./app/models/Rifle.glb"));
-    let model = renderer.load_mesh(&mesh, shader_program);
+    let model = renderer.load_mesh(&mesh, pbr_shader);
+    let mut player_script = PlayerScript::new(clock);
+    player_script.set_bullet_shader(bullet_shader);
     entities.create_entity(vec![
         //ace::Components::Position(vec3!(0.0, 0.0, -50.0)),
         ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
         ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
-        ace::Components::Scripts(vec![Box::new(PlayerScript::new(clock))]),
+        ace::Components::Scripts(vec![Box::new(player_script)]),
         ace::Components::Player,
         ace::Components::Collider(collider),
         ace::Components::Model(model),

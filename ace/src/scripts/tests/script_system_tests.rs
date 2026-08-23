@@ -84,7 +84,7 @@ pub fn run_should_update_existing_component_with_returned_entity() {
 #[derive(Clone)]
 pub struct UpdatePositionScript;
 impl Script for UpdatePositionScript {
-    fn run(&self, _: &Entity<'_, Components>, _: &Events) -> Vec<Components> {
-        vec![Components::Position(vec3!(10.0))]
+    fn run(&self, entity: &Entity<'_, Components>, _: &Events, updates: &mut Update<Components>) {
+        updates.set(entity.id(), Components::Position(vec3!(10.0)));
     }
 }

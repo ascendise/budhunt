@@ -78,6 +78,9 @@ impl InputListener for GlfwInputListener {
         if window.get_key(glfw::Key::A) == glfw::Action::Press {
             inputs.push(Input::Left);
         }
+        if window.get_mouse_button(glfw::MouseButtonLeft) == glfw::Action::Press {
+            inputs.push(Input::Shoot);
+        }
         let cursor_offset = Input::MoveCursor(self.get_cursor_offset());
         inputs.push(cursor_offset);
         if let Some(scroll) = self.get_scroll_offset() {

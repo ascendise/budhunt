@@ -13,8 +13,9 @@ macro_rules! script {
                 &self,
                 entity: &$crate::Entity<'_, $crate::Components>,
                 events: &$crate::Events,
-            ) -> Vec<$crate::Components> {
-                $script(entity, events)
+                updates: &mut $crate::Update<$crate::Components>,
+            ) {
+                $script(entity, events);
             }
         }
         QuickScript
@@ -30,8 +31,7 @@ impl System for ScriptSystem {
         for entity in scripted_entities {
             let scripts = component!(&entity[Components::SCRIPTS], Components::Scripts);
             for script in scripts {
-                let updated_components = script.run(&entity, events);
-                updates.set_batch(entity.id(), updated_components);
+                script.run(&entity, events, &mut updates);
             }
         }
         entities.commit(updates);
@@ -39,5 +39,5 @@ impl System for ScriptSystem {
 }
 
 pub trait Script<T: Component = Components> {
-    fn run(&self, entity: &Entity<'_, T>, events: &Events) -> Vec<T>;
+    fn run(&self, entity: &Entity<'_, T>, events: &Events, updates: &mut Update<T>);
 }

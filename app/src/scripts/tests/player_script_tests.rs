@@ -34,15 +34,21 @@ pub fn run_should_change_player_velocity_on_matching_input(
     let direction = Components::Direction(vec3!(0.0, 0.0, 1.0));
     let rigid_body = Components::RigidBody(Default::default());
     let model = mock_model();
-    let player = Entity::new(0, vec![&position, &direction, &rigid_body, &model]);
+    let mut entities = Entities::empty();
+    let player_id = entities.create_entity(vec![position, direction, rigid_body, model]);
+    let player = entities.get_entity(player_id);
     // Act
     let events = Events::empty();
     let move_cursor = Input::MoveCursor(vec2!(90.0, 0.0));
     events.push_event(Event::Input(move_cursor));
     events.push_event(Event::Input(input));
-    let updated_components = sut.run(&player, &events);
+    let mut updates = entities.update();
+    sut.run(&player, &events, &mut updates);
+    drop(player);
+    entities.commit(updates);
+    let player = entities.get_entity(player_id);
     // Assert
-    let rigid_body = component!(&updated_components[1], Components::RigidBody);
+    let rigid_body = component!(&player[Components::RIGIDBODY], Components::RigidBody);
     assert_float_eq!(Vec3 & expected_position, rigid_body.velocity().unwrap())
 }
 
@@ -61,16 +67,22 @@ pub fn run_should_turn_camera_and_model_on_matching_input(
     let direction = Components::Direction(vec3!(0.0, 0.0, 1.0));
     let rigid_body = Components::RigidBody(Default::default());
     let model = mock_model();
-    let player = Entity::new(0, vec![&position, &direction, &rigid_body, &model]);
+    let mut entities = Entities::empty();
+    let player_id = entities.create_entity(vec![position, direction, rigid_body, model]);
+    let player = entities.get_entity(player_id);
     // Act
     let move_cursor = Input::MoveCursor(cursor_offset);
     let events = Events::empty();
     events.push_event(Event::Input(move_cursor));
-    let updated_components = sut.run(&player, &events);
+    let mut updates = entities.update();
+    sut.run(&player, &events, &mut updates);
+    drop(player);
+    entities.commit(updates);
+    let player = entities.get_entity(player_id);
     // Assert
-    let camera_direction = component!(&updated_components[0], Components::Direction);
+    let camera_direction = component!(&player[Components::DIRECTION], Components::Direction);
     assert_float_eq!(Vec3 & expected_camera_direction, camera_direction);
-    let model = component!(&updated_components[2], Components::Model);
+    let model = component!(&player[Components::MODEL], Components::Model);
     assert_float_eq!(
         Matrix4 model.transform.rotation,
         math::rotation_fpv(camera_direction)
@@ -78,7 +90,7 @@ pub fn run_should_turn_camera_and_model_on_matching_input(
 }
 
 #[test]
-pub fn run_should_spawn_ray_when_player_presses_shoot() {
+pub fn run_should_spawn_lines_when_player_presses_shoot() {
     // Arrange
     let clock = Box::new(StubClock { fixed_delta: 0.1 });
     let sut = setup(clock);
@@ -86,11 +98,19 @@ pub fn run_should_spawn_ray_when_player_presses_shoot() {
     let direction = Components::Direction(vec3!(0.0, 0.0, 1.0));
     let rigid_body = Components::RigidBody(Default::default());
     let model = mock_model();
-    let player = Entity::new(0, vec![&position, &direction, &rigid_body, &model]);
+    let mut entities = Entities::empty();
+    let player_id = entities.create_entity(vec![position, direction, rigid_body, model]);
     // Act
+    let player = entities.get_entity(player_id);
     let events = Events::empty();
     events.push_event(Event::Input(Input::Shoot));
-    let _ = sut.run(&player, &events);
+    let mut updates = entities.update();
+    sut.run(&player, &events, &mut updates);
+    drop(player);
+    entities.commit(updates);
     // Assert
-    //
+    let components = entities.get_components(Components::LINE);
+    assert_eq!(1, components.len());
+    let line = component!(components[0], Components::Line);
+    assert_eq!(vec3!(10.0, 5.0, 12.0), line.transform.position);
 }

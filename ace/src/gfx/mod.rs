@@ -204,28 +204,50 @@ pub struct PointLight {
     pub position: math::Vec3,
 }
 
-pub type CollisionMesh = Vec<math::Vec3>;
-pub const COLLIDER_MESH_NAME: &str = "COLLIDER";
+pub struct MeshMeta {
+    pub collider: Option<Vec<math::Vec3>>,
+    pub points: Vec<math::Vec3>,
+}
+const COLLIDER_NODE_NAME: &str = "COLLIDER";
+const POINT_NODE_PREFIX: &str = "POINT";
 
 /// Reads glb file from file system and returns a [Mesh] consisting of all the meshes inside the glb.
-/// If a [gltf::Mesh] has the [gltf::Mesh::name] "COLLIDER", it gets returned separately as [ColllisionMesh].
+/// If a [gltf::Mesh] has the [gltf::Mesh::name] "COLLIDER", it get's returned as [MeshMeta::collider]
 ///
-/// NOTE: In Blender, make sure the MESH (green symbol) is called "COLLIDER",
+/// If a [gltf::Node] has the prefix [gltf::Node::name] "POINT", it's translation get's read and
+/// returned with all other points in [MeshMeta::points]
+///
+/// NOTE: In Blender, make sure the MESH (green symbol) is called "COLLIDER/POINT",
 /// not just the OBJECT (orange symbol, parent of mesh).
-pub fn load_glb_file(gltf_path: &std::path::Path) -> (Mesh, Option<CollisionMesh>) {
+pub fn load_mesh_from_glb(gltf_path: &std::path::Path) -> (Mesh, MeshMeta) {
     let (document, buffers, images) = gltf::import(gltf_path).unwrap();
     let mut collider = None;
+    let mut points = vec![];
     let nodes: Vec<MeshNode> = document
-        .meshes()
-        .filter_map(|m| {
-            if m.name() == Some(COLLIDER_MESH_NAME) {
-                let collider_mesh =
-                    load_collider_mesh(&m, &buffers).expect("failed to load collider mesh");
-                collider = Some(collider_mesh);
-                None
+        .nodes()
+        .filter_map(|node| {
+            let mesh = node.mesh();
+            if let Some(mesh) = mesh {
+                if mesh.name() == Some(COLLIDER_NODE_NAME) {
+                    //TODO: Dont panic! Talk about it instead :D
+                    let collider_mesh =
+                        load_collider_mesh(&mesh, &buffers).expect("failed to load collider mesh");
+                    collider = Some(collider_mesh);
+                    None
+                } else {
+                    let mesh_node =
+                        load_mesh_node(&mesh, &buffers, &images).expect("failed to load mesh");
+                    Some(mesh_node)
+                }
             } else {
-                let mesh_node = load_mesh_node(&m, &buffers, &images).expect("failed to load mesh");
-                Some(mesh_node)
+                if let Some(name) = node.name()
+                    && name.starts_with(POINT_NODE_PREFIX)
+                {
+                    let point =
+                        load_point(&node).unwrap_or_else(|| panic!("failed to load point {name}"));
+                    points.push(point);
+                }
+                None
             }
         })
         .collect();
@@ -233,24 +255,37 @@ pub fn load_glb_file(gltf_path: &std::path::Path) -> (Mesh, Option<CollisionMesh
         panic!("No model found!")
     }
     let mesh = Mesh { nodes };
-    (mesh, collider)
+    let metainfo = MeshMeta { collider, points };
+    (mesh, metainfo)
 }
 
 fn load_collider_mesh(
     mesh: &gltf::Mesh<'_>,
     buffers: &[gltf::buffer::Data],
-) -> Option<CollisionMesh> {
+) -> Option<Vec<math::Vec3>> {
     let primitives: Vec<_> = mesh.primitives().collect();
     let primitive = primitives.first()?;
     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
     let positions: Vec<math::Vec3> = reader
-        .read_positions()
-        .expect("No positions found")
+        .read_positions()?
         .map(|v| vec3!(v[0], v[1], v[2]))
         .collect();
-    let indices = reader.read_indices().expect("No indices found").into_u32();
+    let indices = reader.read_indices()?.into_u32();
     let mesh = indices.map(|i| positions[i as usize].clone()).collect();
     Some(mesh)
+}
+
+fn load_point(node: &gltf::Node<'_>) -> Option<math::Vec3> {
+    if let gltf::scene::Transform::Decomposed {
+        translation,
+        rotation: _,
+        scale: _,
+    } = node.transform()
+    {
+        Some(vec3!(translation[0], translation[1], translation[2]))
+    } else {
+        None
+    }
 }
 
 fn load_mesh_node(

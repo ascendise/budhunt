@@ -108,7 +108,7 @@ fn spawn_targets(
     entities: &mut ace::Entities,
 ) -> ace::physics::Collider {
     // Collider should be hitting player even if visible object is very high (for testing)
-    let (mesh, collider) = gfx::load_glb_file(Path::new("./app/models/Target.glb"));
+    let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"));
     let model = renderer.load_mesh(&mesh, shader_program);
     let targets = [
         vec3!(0.0, 0.0, 0.0),
@@ -122,7 +122,8 @@ fn spawn_targets(
         vec3!(1.5, 0.2, -1.5),
         vec3!(-1.3, 1.0, -1.5),
     ];
-    let collider = ace::physics::Collider::new(collider.expect("no collider found for Target.glb"));
+    let collider =
+        ace::physics::Collider::new(metainfo.collider.expect("no collider found for Target.glb"));
     for target in targets {
         let position = ace::Components::Position(target);
         let collider = ace::Components::Collider(collider.clone());
@@ -170,7 +171,7 @@ fn spawn_floor(
     shader_program: u32,
     entities: &mut ace::Entities,
 ) {
-    let (mut plane_mesh, _) = gfx::load_glb_file(Path::new("./app/models/Plane.glb"));
+    let (mut plane_mesh, _) = gfx::load_mesh_from_glb(Path::new("./app/models/Plane.glb"));
     // Scale / Move model programatically
     plane_mesh.nodes[0].vertices = plane_mesh.nodes[0]
         .vertices
@@ -197,7 +198,7 @@ fn spawn_player(
     clock: Box<ace::glfw_input::GlfwClock>,
     collider: ace::physics::Collider,
 ) {
-    let (mesh, _) = gfx::load_glb_file(Path::new("./app/models/Rifle.glb"));
+    let (mesh, _) = gfx::load_mesh_from_glb(Path::new("./app/models/Rifle.glb"));
     let model = renderer.load_mesh(&mesh, pbr_shader);
     let mut player_script = PlayerScript::new(clock);
     player_script.set_bullet_shader(bullet_shader);

@@ -198,18 +198,24 @@ fn spawn_player(
     clock: Box<ace::glfw_input::GlfwClock>,
     collider: ace::physics::Collider,
 ) {
-    let (mesh, _) = gfx::load_mesh_from_glb(Path::new("./app/models/Rifle.glb"));
-    let model = renderer.load_mesh(&mesh, pbr_shader);
+    let (rifle_mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Rifle.glb"));
+    let rifle_model = renderer.load_mesh(&rifle_mesh, pbr_shader);
     let mut player_script = PlayerScript::new(clock);
     player_script.set_bullet_shader(bullet_shader);
+    let point = metainfo
+        .points
+        .first()
+        .expect("muzzle point data missing")
+        .clone();
+    println!("{point:?}");
     entities.create_entity(vec![
-        //ace::Components::Position(vec3!(0.0, 0.0, -50.0)),
         ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
         ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
+        ace::Components::Point(point),
         ace::Components::Scripts(vec![Box::new(player_script)]),
         ace::Components::Player,
         ace::Components::Collider(collider),
-        ace::Components::Model(model),
+        ace::Components::Model(rifle_model),
         ace::Components::RigidBody(ace::physics::RigidBody::new(vec3!(0.0))),
     ]);
 }

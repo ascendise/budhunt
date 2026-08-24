@@ -269,18 +269,12 @@ impl<T: Component> Update<T> {
         self
     }
 }
-impl<T: Component> Drop for Update<T> {
-    fn drop(&mut self) {
-        if !self.updates.is_empty() {
-            panic!("Updates with pending changes dropped! Did you forget Entities::commit()?")
-        }
-    }
-}
 
 #[derive(Component)]
 pub enum Components {
     Position(math::Vec3),
     Direction(math::Vec3),
+    Point(math::Vec3), //TODO: Move into model
     Model(gfx::Model),
     Light(gfx::Light),
     Line(gfx::Line),

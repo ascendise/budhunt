@@ -1,7 +1,7 @@
 use ace::{
     component, event,
     math::{self, rotation_fpv},
-    vec2, vec3,
+    vec2, vec3, vec4,
 };
 
 #[cfg(test)]
@@ -41,7 +41,8 @@ impl ace::Script for PlayerScript {
             ace::Components::Position
         )
         .clone();
-        self.handle_shooting(&inputs, updates, &position, &camera_direction);
+        let point = component!(&player[ace::Components::POINT], ace::Components::Point).clone();
+        self.handle_shooting(&inputs, updates, &position, &camera_direction, &point);
     }
 }
 impl PlayerScript {
@@ -97,7 +98,7 @@ impl PlayerScript {
         move_direction: &math::Vec3,
     ) -> math::Vec3 {
         let mut movement = math::Vec3::default();
-        let speed = 10.0;
+        let speed = 5.0;
         let speed = self.clock.time_delta() * speed;
         let front = move_direction.normalize();
         let up = vec3!(0.0, 1.0, 0.0);
@@ -123,13 +124,19 @@ impl PlayerScript {
         updates: &mut ace::Update<ace::Components>,
         position: &math::Vec3,
         direction: &math::Vec3,
+        muzzle_position: &math::Vec3,
     ) {
         for input in inputs {
             if let ace::Input::Shoot = input {
+                let rotation = rotation_fpv(direction);
+                let muzzle_position = &rotation
+                    * &vec4!(muzzle_position.x, muzzle_position.y, muzzle_position.z, 1.0);
+                let muzzle_position =
+                    vec3!(muzzle_position.x, muzzle_position.y, muzzle_position.z);
                 let bullet = ace::gfx::Line {
                     transform: ace::gfx::Transform {
-                        position: position.clone(),
-                        rotation: rotation_fpv(direction),
+                        position: position + &muzzle_position,
+                        rotation,
                     },
                     shader: self.bullet_shader,
                 };

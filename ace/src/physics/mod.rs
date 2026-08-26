@@ -42,7 +42,11 @@ impl PhysicsSystem {
     ) {
         collision_system.run(entities, events);
         let mut updates = entities.update();
-        for event in events.get_events(|e| event!(e, Event::Collision)) {
+        let events = events
+            .get_events(|e| event!(e, Event::Collision))
+            .into_iter()
+            .flat_map(|e| e.collisions);
+        for event in events {
             if let Some(collision_point) = event.collision_point {
                 updates.set(event.entity_id, Components::Position(collision_point));
             }
@@ -109,16 +113,19 @@ impl System for CollisionSystem {
                         Self::find_collision_point(&mut collision_entity, &other_collision_entity);
                     let obstacle_collision_point =
                         Self::find_collision_point(&mut other_collision_entity, &collision_entity);
-                    events.push_events(&mut vec![
-                        Event::Collision(CollisionEvent {
+
+                    let event = vec![
+                        CollisionEvent {
                             entity_id: collider.id(),
                             collision_point: collider_collision_point,
-                        }),
-                        Event::Collision(CollisionEvent {
+                        },
+                        CollisionEvent {
                             entity_id: other.id(),
                             collision_point: obstacle_collision_point,
-                        }),
-                    ]);
+                        },
+                    ];
+                    let event = CompoundCollisionEvent::new(event);
+                    events.push_event(Event::Collision(event));
                 }
             }
         }
@@ -258,6 +265,20 @@ impl Collider {
 
 fn f32_in_range(value: f32, min: f32, max: f32) -> bool {
     value >= min && value <= max
+}
+
+/// Collects all related collision events
+/// When two entities collide, they would both trigger a [CollisionEvent]
+/// To know which [events](CollisionEvent) are related, like that entity 1
+/// collided with entity 2 we collect them in a [CompoundCollisionEvent]
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompoundCollisionEvent {
+    collisions: Vec<CollisionEvent>,
+}
+impl CompoundCollisionEvent {
+    pub fn new(collisions: Vec<CollisionEvent>) -> Self {
+        Self { collisions }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

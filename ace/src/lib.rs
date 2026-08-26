@@ -12,7 +12,7 @@ pub mod physics;
 pub mod scripts;
 pub use scripts::Script;
 
-use crate::physics::CollisionEvent;
+use crate::physics::{CollisionEvent, CompoundCollisionEvent};
 
 #[cfg(test)]
 mod tests;
@@ -324,7 +324,7 @@ pub enum Input {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Input(Input),
-    Collision(CollisionEvent),
+    Collision(CompoundCollisionEvent),
 }
 
 #[macro_export]

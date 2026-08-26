@@ -1,6 +1,6 @@
 use crate::{
-    Components, Entities, Entity, Event, Events, System, component, event, math, maybe_component,
-    vec3, vec4,
+    Component, Components, Entities, Entity, Event, Events, System, component, event, math,
+    maybe_component, vec3, vec4,
 };
 
 #[cfg(test)]
@@ -125,6 +125,7 @@ impl System for CollisionSystem {
                         },
                     ];
                     let event = CompoundCollisionEvent::new(event);
+                    println!("{event:?}");
                     events.push_event(Event::Collision(event));
                 }
             }
@@ -278,6 +279,18 @@ pub struct CompoundCollisionEvent {
 impl CompoundCollisionEvent {
     pub fn new(collisions: Vec<CollisionEvent>) -> Self {
         Self { collisions }
+    }
+
+    pub fn get_entities_hit_by<'a, T: Component>(
+        &self,
+        entity_id: usize,
+        entities: &'a Entities<T>,
+    ) -> Vec<Entity<'a, T>> {
+        self.collisions
+            .iter()
+            .filter(|e| e.entity_id == entity_id)
+            .map(|e| entities.get_entity(e.entity_id))
+            .collect()
     }
 }
 

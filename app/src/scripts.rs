@@ -1,7 +1,7 @@
 use ace::{
     component, event,
     math::{self, rotation_fpv},
-    vec2, vec3, vec4,
+    maybe_component, vec2, vec3, vec4,
 };
 
 #[cfg(test)]
@@ -136,12 +136,45 @@ impl PlayerScript {
                 let bullet = ace::gfx::Line {
                     transform: ace::gfx::Transform {
                         position: position + &muzzle_position,
-                        rotation,
+                        rotation: rotation.clone(),
                     },
                     shader: self.bullet_shader,
                 };
-                updates.spawn(vec![ace::Components::Line(bullet)]);
+                let position = &vec4!(position.x, position.y, position.z, 1.0);
+                let start = &rotation * position;
+                let end = &rotation * (&vec4!(0.0, 0.0, -100.0, 1.0) + position);
+                updates.spawn(vec![
+                    ace::Components::Line(bullet),
+                    ace::Components::Collider(ace::physics::Collider::new(vec![
+                        vec3!(start.x, start.y, start.z),
+                        vec3!(end.x, end.y, end.z),
+                    ])),
+                ]);
             }
         }
+    }
+}
+
+pub struct BulletSystem;
+impl ace::System for BulletSystem {
+    fn run(&self, entities: &mut ace::Entities, events: &ace::Events) {
+        let lines = entities.get_entities(ace::Components::LINE);
+        let collision_events = events.get_events(|e| event!(e, ace::Event::Collision));
+        let mut updates = entities.update();
+        for line in lines {
+            for event in &collision_events {
+                let hit_targets = event.get_entities_hit_by(line.id(), entities);
+                for target in hit_targets {
+                    let position = maybe_component!(
+                        target.get(ace::Components::POSITION),
+                        Some(ace::Components::Position)
+                    );
+                    if let Some(position) = position {
+                        updates.set(target.id(), ace::Components::Position(position.clone()));
+                    }
+                }
+            }
+        }
+        entities.commit(updates);
     }
 }

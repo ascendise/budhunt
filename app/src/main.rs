@@ -239,10 +239,11 @@ fn setup_world(
     let physics_system = Box::new(ace::physics::PhysicsSystem::new(Some(
         ace::physics::CollisionSystem,
     )));
+    let bullet_system = Box::new(scripts::BulletSystem);
     let input_listener = ace::glfw_input::GlfwInputListener::init(window.clone());
     ace::World::init(
         entities,
-        vec![render_system, script_system, physics_system],
+        vec![render_system, script_system, physics_system, bullet_system],
         clock.clone(),
         Box::new(input_listener),
     )

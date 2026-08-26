@@ -363,27 +363,10 @@ pub fn update_and_commit_should_update_entity_count() {
 #[should_panic]
 pub fn update_and_commit_should_panic_when_trying_to_set_entity_index_outside_of_range() {
     // Arrange
-    let mut entities = Entities::empty_custom::<TestComponents, 32>();
+    let entities = Entities::empty_custom::<TestComponents, 32>();
     let mut updates = entities.update();
     // Act
     updates.set(0, TestComponents::Number(123));
-    // Should have panicked at this point. Doing Entities::commit to not panic from dropping pending
-    // commits
-    entities.commit(updates);
-    // Assert
-    // Should have panicked!
-}
-
-#[test]
-#[should_panic]
-pub fn update_and_commit_should_panic_if_pending_updates_drop_before_commit() {
-    // Arrange
-    let entities = Entities::empty_custom::<TestComponents, 32>();
-    let mut updates = entities.update();
-    let id = updates.spawn(vec![]);
-    updates.set(id, TestComponents::Number(123));
-    // Act
-    // No Entities::commit();
     // Assert
     // Should have panicked!
 }

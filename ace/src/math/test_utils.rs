@@ -1,3 +1,6 @@
+#[cfg(test)]
+pub mod tests;
+
 #[macro_export]
 macro_rules! assert_float_eq {
     (Matrix4 $left:expr, $right:expr) => {{
@@ -49,6 +52,8 @@ macro_rules! float_is_near {
     ($left:expr, $right:expr) => {
         if $left == $right {
             true
+        } else if $left.signum() != $right.signum() {
+            false
         } else {
             let left_abs = $left.abs();
             let right_abs = $right.abs();

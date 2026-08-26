@@ -36,6 +36,10 @@ macro_rules! vec4 {
     };
 }
 
+pub fn vector_triple_product(v1: &Vec3, v2: &Vec3, v3: &Vec3) -> Vec3 {
+    v1.cross(&v2.cross(v3))
+}
+
 pub fn projection(fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Matrix4 {
     let fov_tan = (fov / 2.0).tan();
     [

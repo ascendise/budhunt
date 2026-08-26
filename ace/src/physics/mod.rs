@@ -1,6 +1,8 @@
+use core::panic;
+
 use crate::{
     Component, Components, Entities, Entity, Event, Events, System, component, event, math,
-    maybe_component, vec3, vec4,
+    maybe_component, vec3,
 };
 
 #[cfg(test)]
@@ -125,7 +127,7 @@ impl System for CollisionSystem {
                         },
                     ];
                     let event = CompoundCollisionEvent::new(event);
-                    println!("{event:?}");
+                    println!("collision! {event:?}");
                     events.push_event(Event::Collision(event));
                 }
             }
@@ -169,40 +171,51 @@ pub struct Collider {
     vertices: Vec<math::Vec3>,
 }
 impl Collider {
-    pub const SIMPLEX_DIRS: [math::Vec3; 4] = [
-        vec3!(1.0, 0.0, 0.0),
-        vec3!(0.0, 1.0, 0.0),
-        vec3!(0.0, 0.0, 1.0),
-        vec3!(-1.0, 0.0, 0.0),
-    ];
-
     pub fn new(vertices: Vec<math::Vec3>) -> Self {
         Self { vertices }
+    }
+
+    pub fn line(position: math::Vec3, direction: &math::Vec3) -> Self {
+        let end = &position + direction;
+        Self {
+            vertices: vec![position, end],
+        }
     }
 
     fn translate(&self, position: &math::Vec3) -> Self {
         let vertices: Vec<math::Vec3> = self.vertices.iter().map(|v| v + position).collect();
         Collider { vertices }
     }
-
     pub fn intersects(&self, other: &Collider) -> bool {
-        let initial_dir = &Self::SIMPLEX_DIRS[0];
-        let origin = self.support(initial_dir) - other.support(&-initial_dir);
-        let mut simplex = vec![origin];
-        for direction in &Self::SIMPLEX_DIRS[1..] {
-            let point = self.support(direction) - other.support(&-direction);
-            if point.dot(direction) < 0.0 {
-                return false;
-            }
-            simplex.push(point);
-            if Self::nearest_simplex(&simplex) {
+        let initial_dir = vec3!(1.0, 0.0, 0.0);
+        let initial_point = self.support(other, &initial_dir);
+        let mut simplex = vec![initial_point.clone()];
+        let mut direction = -initial_point;
+        loop {
+            let point = self.support(other, &direction);
+            if point == vec3!(0.0) {
                 return true;
             }
+            if point.dot(&direction) < 0.0 {
+                return false; // point lies opposite of search direction so can't be colliding
+            }
+            simplex.push(point);
+            match Self::nearest_simplex(&mut simplex) {
+                NearestSimplex::Next { direction: next } => {
+                    direction = next;
+                }
+                NearestSimplex::ContainsOrigin => return true,
+            }
         }
-        false
     }
 
-    fn support(&self, direction: &math::Vec3) -> &math::Vec3 {
+    fn support(&self, other: &Collider, direction: &math::Vec3) -> math::Vec3 {
+        let left = self.find_furthest_point(direction);
+        let right = other.find_furthest_point(&-direction);
+        left - right
+    }
+
+    fn find_furthest_point(&self, direction: &math::Vec3) -> &math::Vec3 {
         let mut max = f32::NEG_INFINITY;
         let mut index = 0;
         for (v, vertex) in self.vertices.iter().enumerate() {
@@ -215,57 +228,48 @@ impl Collider {
         &self.vertices[index]
     }
 
-    fn nearest_simplex(simplex: &[math::Vec3]) -> bool {
+    fn nearest_simplex(simplex: &mut Vec<math::Vec3>) -> NearestSimplex {
         match simplex.len() {
-            1 => simplex[0] == vec3!(0.0),
             2 => Self::intersects_line(simplex),
             3 => Self::intersects_triangle(simplex),
-            _ => Self::intersects_tetrahedron(simplex),
+            _ => panic!(
+                "collision detection is trying to break into {}th dimension!",
+                simplex.len()
+            ),
         }
     }
 
-    fn intersects_line(line: &[math::Vec3]) -> bool {
-        let point1 = &line[0];
-        let point2 = &line[1];
-        (-point1).cross(&(-point2)) == vec3!(0.0)
+    fn intersects_line(simplex: &[math::Vec3]) -> NearestSimplex {
+        let a = &simplex[1];
+        let b = &simplex[0];
+        let ab = b - a;
+        let ao = -a;
+        let direction = math::vector_triple_product(&ab, &ao, &ab);
+        NearestSimplex::Next { direction }
     }
 
-    fn intersects_triangle(plane: &[math::Vec3]) -> bool {
-        let (point1, point2, point3) = (&plane[0], &plane[1], &plane[2]);
-        let denominator = (point2 - point1).cross(&(point3 - point1)).magnitude() / 2.0;
-        let alpha = point2.cross(point3).magnitude() / (2.0 * denominator);
-        if !f32_in_range(alpha, 0.0, 1.0) {
-            return false;
+    fn intersects_triangle(simplex: &mut Vec<math::Vec3>) -> NearestSimplex {
+        let (a, b, c) = (&simplex[2], &simplex[1], &simplex[0]);
+        let ab = b - a;
+        let ac = c - a;
+        let ao = -a;
+        let rab = math::vector_triple_product(&ac, &ab, &ab);
+        let rac = math::vector_triple_product(&ab, &ac, &ac);
+        if rab.dot(&ao) > 0.0 {
+            simplex.remove(0);
+            NearestSimplex::Next { direction: rab }
+        } else if rac.dot(&ao) > 0.0 {
+            simplex.remove(1);
+            NearestSimplex::Next { direction: rac }
+        } else {
+            NearestSimplex::ContainsOrigin
         }
-        let beta = point3.cross(point1).magnitude() / (2.0 * denominator);
-        if !f32_in_range(beta, 0.0, 1.0) {
-            return false;
-        }
-        let gamma = 1.0 - alpha - beta;
-        f32_in_range(gamma, 0.0, 1.0)
-    }
-
-    fn intersects_tetrahedron(polygon: &[math::Vec3]) -> bool {
-        let tetrahedron: math::Matrix4 = [
-            [polygon[0].x, polygon[1].x, polygon[2].x, polygon[3].x],
-            [polygon[0].y, polygon[1].y, polygon[2].y, polygon[3].y],
-            [polygon[0].z, polygon[1].z, polygon[2].z, polygon[3].z],
-            [1.0, 1.0, 1.0, 1.0],
-        ]
-        .into();
-        let origin = vec4!(0.0, 0.0, 0.0, 1.0);
-        let barycentric_coords = tetrahedron.inverse() * origin;
-        f32_in_range(barycentric_coords.x, 0.0, 1.0)
-            && f32_in_range(barycentric_coords.y, 0.0, 1.0)
-            && f32_in_range(barycentric_coords.z, 0.0, 1.0)
-            && f32_in_range(barycentric_coords.w, 0.0, 1.0)
-            && barycentric_coords.w
-                == 1.0 - barycentric_coords.x - barycentric_coords.y - barycentric_coords.z
     }
 }
 
-fn f32_in_range(value: f32, min: f32, max: f32) -> bool {
-    value >= min && value <= max
+enum NearestSimplex {
+    ContainsOrigin,
+    Next { direction: math::Vec3 },
 }
 
 /// Collects all related collision events

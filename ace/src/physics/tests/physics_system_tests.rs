@@ -1,9 +1,8 @@
 use pretty_assertions::assert_eq;
 use pretty_assertions::assert_ne;
 
-use crate::math;
-use crate::physics::Collider;
 use crate::physics::CollisionSystem;
+use crate::physics::tests::cube;
 use crate::{
     Components, Events, System, component,
     physics::{PhysicsSystem, RigidBody},
@@ -34,24 +33,6 @@ pub fn run_should_move_entity_along_velocity() {
     let position = component!(positions.first(), Some(Components::Position));
     assert_ne!(&vec3!(0.0), position, "entity did not move!");
     assert_eq!(&vec3!(1.0), position, "entity moved the wrong way!");
-}
-
-const CUBE: [math::Vec3; 8] = [
-    vec3!(-0.5, -0.5, 0.5),
-    vec3!(0.5, -0.5, 0.5),
-    vec3!(0.5, 0.5, 0.5),
-    vec3!(-0.5, 0.5, 0.5),
-    vec3!(-0.5, 0.5, -0.5),
-    vec3!(0.5, 0.5, -0.5),
-    vec3!(-0.5, -0.5, -0.5),
-    vec3!(0.5, -0.5, -0.5),
-];
-pub fn cube(size: f32) -> Collider {
-    let mut cube = vec![];
-    for vertex in CUBE {
-        cube.push(vertex * size);
-    }
-    Collider::new(cube)
 }
 
 #[test]

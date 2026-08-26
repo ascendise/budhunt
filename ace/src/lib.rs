@@ -12,7 +12,7 @@ pub mod physics;
 pub mod scripts;
 pub use scripts::Script;
 
-use crate::physics::{CollisionEvent, CompoundCollisionEvent};
+use crate::physics::CompoundCollisionEvent;
 
 #[cfg(test)]
 mod tests;

@@ -415,7 +415,7 @@ impl OpenGlRenderer {
 
     fn render_lines(
         &self,
-        camera_position: &math::Vec3,
+        _camera_position: &math::Vec3,
         projection: &math::Matrix4,
         view: &math::Matrix4,
         renderables: &[Renderable],

@@ -45,7 +45,7 @@ fn main() {
         .expect("Failed to compile model shader");
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
-    let collider = box_collider(0.5, 2.0, 0.5);
+    let collider = box_collider(0.1, 1.0, 0.1);
     let lines_program = renderer
         .compile_shader(VERTEX_SHADER_LINE, FRAGMENT_SHADER_LINE, TONEMAPPING_SHADER)
         .expect("Failed to compile model shader");
@@ -207,9 +207,9 @@ fn spawn_player(
         .first()
         .expect("muzzle point data missing")
         .clone();
-    println!("{point:?}");
     entities.create_entity(vec![
-        ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
+        // ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
+        ace::Components::Position(vec3!(0.0, 0.0, -20.0)),
         ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
         ace::Components::Point(point),
         ace::Components::Scripts(vec![Box::new(player_script)]),

@@ -223,7 +223,8 @@ fn setup_world(
     let physics_system = Box::new(ace::physics::PhysicsSystem::new(Some(
         ace::physics::CollisionSystem,
     )));
-    let input_listener = ace::glfw_input::GlfwInputListener::init(window.clone());
+    let glfw_inputs = ace::glfw_input::GlfwInputsImpl::new(window.clone());
+    let input_listener = ace::glfw_input::GlfwInputListener::init(Box::new(glfw_inputs));
     ace::World::init(
         entities,
         vec![render_system, script_system, physics_system],

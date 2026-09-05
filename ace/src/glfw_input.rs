@@ -92,6 +92,30 @@ impl InputListener for GlfwInputListener {
     }
 }
 
+pub trait GlfwInputs {
+    fn get_key(&self, key: glfw::Key) -> glfw::Action;
+    fn on_cursor_move(&self, fun: fn(math::Vec2) -> ());
+    fn on_scroll(&self, fun: fn(math::Vec2) -> ());
+}
+pub struct GlfwInputsImpl {
+    window: Arc<Mutex<glfw::PWindow>>,
+}
+impl GlfwInputs for GlfwInputsImpl {
+    fn get_key(&self, key: glfw::Key) -> glfw::Action {
+        let window = self.window.lock().unwrap();
+        window.get_key(key)
+    }
+    fn on_cursor_move(&self, fun: fn(math::Vec2) -> ()) {
+        let mut window = self.window.lock().unwrap();
+        window.set_cursor_pos_callback(move |_, x, y| fun(vec2!(x as f32, y as f32)));
+    }
+    fn on_scroll(&self, fun: fn(math::Vec2) -> ()) {
+        let mut window = self.window.lock().unwrap();
+        window.set_scroll_callback(move |_, x, y| fun(vec2!(x as f32, y as f32)));
+    }
+}
+impl GlfwInputsImpl {}
+
 #[derive(Debug, Clone)]
 pub struct GlfwClock {
     glfw: glfw::Glfw,

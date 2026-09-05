@@ -86,7 +86,7 @@ impl RigidBody {
 pub struct CollisionSystem;
 impl System for CollisionSystem {
     fn run(&self, entities: &mut crate::Entities, events: &Events) {
-        let colliders = entities.get_entities(Components::COLLIDER | Components::POSITION);
+        let colliders = entities.get_entities(Components::COLLIDER | Components::POSITION); //TODO: do we REQUIRE a position?
         let rigid_bodies = entities.get_bucket(Components::RIGIDBODY);
         for collider in &colliders {
             let mut collision_entity = CollisionEntity {
@@ -127,7 +127,6 @@ impl System for CollisionSystem {
                         },
                     ];
                     let event = CompoundCollisionEvent::new(event);
-                    println!("collision! {event:?}");
                     events.push_event(Event::Collision(event));
                 }
             }
@@ -292,7 +291,7 @@ impl CompoundCollisionEvent {
     ) -> Vec<Entity<'a, T>> {
         self.collisions
             .iter()
-            .filter(|e| e.entity_id == entity_id)
+            .filter(|e| e.entity_id != entity_id)
             .map(|e| entities.get_entity(e.entity_id))
             .collect()
     }

@@ -134,18 +134,20 @@ impl PlayerScript {
             if let ace::Input::Shoot = input {
                 let rotation = rotation_fpv(direction);
                 let muzzle_position = rotate_vec3(muzzle_position, &rotation);
+                let muzzle_position = position + &muzzle_position;
                 let bullet = ace::gfx::Line {
                     transform: ace::gfx::Transform {
-                        position: position + &muzzle_position,
+                        position: muzzle_position.clone(),
                         rotation: rotation.clone(),
                     },
                     shader: self.bullet_shader,
                 };
-                let end = &vec3!(0.0, 0.0, -100.0) + &muzzle_position;
-                let end = &rotation * vec4!(end.x, end.y, end.z, 1.0);
-                let vertices = vec![muzzle_position, vec3!(end.x, end.y, end.z)];
+                let direction = rotate_vec3(&vec3!(0.0, 0.0, -100.0), &rotation);
+                let end = &muzzle_position + &direction;
+                let vertices = vec![muzzle_position, end];
                 updates.spawn(vec![
                     ace::Components::Line(bullet),
+                    ace::Components::Position(vec3!(0.0)),
                     ace::Components::Collider(ace::physics::Collider::new(vertices)),
                 ]);
             }
@@ -170,12 +172,18 @@ impl ace::System for BulletSystem {
             for event in &collision_events {
                 let hit_targets = event.get_entities_hit_by(line.id(), entities);
                 for target in hit_targets {
+                    if target.get(ace::Components::LINE).is_some() {
+                        continue;
+                    }
                     let position = maybe_component!(
                         target.get(ace::Components::POSITION),
                         Some(ace::Components::Position)
                     );
-                    if let Some(position) = position {
-                        updates.set(target.id(), ace::Components::Position(position.clone()));
+                    if position.is_some() {
+                        updates.set(
+                            target.id(),
+                            ace::Components::Position(vec3!((target.id() + 1) as f32, 10.0, 0.0)),
+                        );
                     }
                 }
             }

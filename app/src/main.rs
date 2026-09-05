@@ -208,8 +208,8 @@ fn spawn_player(
         .expect("muzzle point data missing")
         .clone();
     entities.create_entity(vec![
-        // ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
-        ace::Components::Position(vec3!(0.0, 0.0, -20.0)),
+        ace::Components::Position(vec3!(0.0, 0.0, 5.0)),
+        //ace::Components::Position(vec3!(0.0, 0.0, -20.0)),
         ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
         ace::Components::Point(point),
         ace::Components::Scripts(vec![Box::new(player_script)]),

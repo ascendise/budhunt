@@ -368,7 +368,6 @@ pub trait Clock {
 
 pub trait InputListener {
     fn get_inputs(&self) -> Vec<Input>;
-    fn get_cursor_offset(&self) -> math::Vec2;
 }
 
 #[derive(PartialEq, Debug, Clone)]

@@ -8,7 +8,7 @@ mod tests;
 
 pub struct GlfwInputListener {
     glfw_inputs: Box<dyn GlfwInputs>,
-    cursor_offset: Arc<Mutex<math::Vec2>>,
+    cursor_offset: Arc<Mutex<Option<math::Vec2>>>,
     scroll: Arc<Mutex<f32>>,
 }
 impl GlfwInputListener {
@@ -21,14 +21,15 @@ impl GlfwInputListener {
             scroll,
         }
     }
-    fn setup_cursor_callback(glfw_inputs: &dyn GlfwInputs) -> Arc<Mutex<math::Vec2>> {
-        let shared_offset = Arc::new(Mutex::new(vec2!(0.0)));
+    fn setup_cursor_callback(glfw_inputs: &dyn GlfwInputs) -> Arc<Mutex<Option<math::Vec2>>> {
+        let shared_offset = Arc::new(Mutex::new(Option::<math::Vec2>::None));
         let cursor_offset = shared_offset.clone();
         let shared_position = Arc::new(Mutex::new(vec2!(0.0)));
         let cursor_position = shared_position.clone();
         let update_cursor_offset = move |position: math::Vec2| {
             let sensitivity = 0.1;
             let mut cursor_offset = cursor_offset.lock().unwrap();
+            *cursor_offset = Some(vec2!(0.0));
             let mut cursor_position = cursor_position.lock().unwrap();
             let x = position.x;
             let y = position.y;
@@ -36,6 +37,7 @@ impl GlfwInputListener {
             let offset_y = cursor_position.y - y;
             cursor_position.x = x;
             cursor_position.y = y;
+            let cursor_offset = cursor_offset.as_mut().unwrap();
             cursor_offset.x += offset_x * sensitivity;
             cursor_offset.y = (cursor_offset.y + offset_y * sensitivity).clamp(-89.0, 89.0);
         };
@@ -53,6 +55,11 @@ impl GlfwInputListener {
         };
         glfw_inputs.on_scroll(Box::new(update_scroll));
         shared_scroll
+    }
+
+    fn get_cursor_offset(&self) -> Option<math::Vec2> {
+        let offset = self.cursor_offset.lock().unwrap();
+        offset.clone()
     }
 
     fn get_scroll_offset(&self) -> Option<f32> {
@@ -79,17 +86,13 @@ impl InputListener for GlfwInputListener {
         if glfw_inputs.get_key(glfw::Key::A) == glfw::Action::Press {
             inputs.push(Input::Left);
         }
-        let cursor_offset = Input::MoveCursor(self.get_cursor_offset());
-        inputs.push(cursor_offset);
+        if let Some(cursor_offset) = self.get_cursor_offset() {
+            inputs.push(Input::MoveCursor(cursor_offset));
+        }
         if let Some(scroll) = self.get_scroll_offset() {
             inputs.push(Input::Scroll(scroll));
         }
         inputs
-    }
-
-    fn get_cursor_offset(&self) -> math::Vec2 {
-        let offset = self.cursor_offset.lock().unwrap();
-        offset.clone()
     }
 }
 

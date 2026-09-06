@@ -7,6 +7,7 @@ mod glfw_input_listener_tests;
 struct FakeGlfwInputs {
     key_actions: Mutex<Vec<glfw::Key>>,
     cursor_actions: Mutex<Vec<math::Vec2>>,
+    scroll_actions: Mutex<Vec<math::Vec2>>,
 }
 
 impl FakeGlfwInputs {
@@ -14,6 +15,7 @@ impl FakeGlfwInputs {
         Self {
             key_actions: Mutex::new(vec![]),
             cursor_actions: Mutex::new(vec![]),
+            scroll_actions: Mutex::new(vec![]),
         }
     }
 
@@ -24,6 +26,10 @@ impl FakeGlfwInputs {
     /// Define which position the cursor moved to (top-left orientation)
     fn cursor_actions(&self, cursor_actions: Vec<math::Vec2>) {
         *self.cursor_actions.lock().unwrap() = cursor_actions;
+    }
+
+    fn scroll_actions(&self, scroll_actions: Vec<math::Vec2>) {
+        *self.scroll_actions.lock().unwrap() = scroll_actions;
     }
 }
 impl GlfwInputs for FakeGlfwInputs {
@@ -44,5 +50,9 @@ impl GlfwInputs for FakeGlfwInputs {
         }
     }
 
-    fn on_scroll(&self, fun: Box<dyn Fn(crate::math::Vec2)>) {}
+    fn on_scroll(&self, fun: Box<dyn Fn(crate::math::Vec2)>) {
+        for scroll_action in self.scroll_actions.lock().unwrap().drain(..) {
+            fun(scroll_action);
+        }
+    }
 }

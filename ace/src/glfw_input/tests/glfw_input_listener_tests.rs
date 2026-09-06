@@ -38,6 +38,7 @@ pub fn get_inputs_should_return_move_input_on_movement_key_input(
 }
 
 #[test]
+// The sensitivity is currently fixed at 0.1, so an offset of 10, 10 ends up being 1, 1
 pub fn get_inputs_should_move_cursor_offset_based_on_mouse_movement() {
     // Arrange
     let fake_inputs = FakeGlfwInputs::new();
@@ -51,5 +52,23 @@ pub fn get_inputs_should_move_cursor_offset_based_on_mouse_movement() {
     let inputs = sut.get_inputs();
     // Assert
     let expected_input = vec![Input::MoveCursor(vec2!(-1.0, 1.0))];
+    assert_eq!(expected_input, inputs);
+}
+
+#[test]
+// The sensitivity is currently fixed at 10, so an offset of 10, 10 ends up being 100, 100
+pub fn get_inputs_should_move_scroll_offset_based_on_mouse_scroll() {
+    // Arrange
+    let fake_inputs = FakeGlfwInputs::new();
+    fake_inputs.scroll_actions(vec![
+        vec2!(0.0, 1.0),  // 10
+        vec2!(0.0, 2.0),  // 30
+        vec2!(99.0, 3.0), // 60; we ignore horizontal scroll
+    ]);
+    let sut = GlfwInputListener::init(Box::new(fake_inputs));
+    // Act
+    let inputs = sut.get_inputs();
+    // Assert
+    let expected_input = vec![Input::MoveCursor(vec2!(0.0, 0.0)), Input::Scroll(60.0)];
     assert_eq!(expected_input, inputs);
 }

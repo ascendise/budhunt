@@ -218,17 +218,17 @@ pub fn mul_matrix_should_return_matrix_product2() {
     // Arrange
     let left = Matrix4::new(1.0);
     let mut right = Matrix4::new(1.0);
-    right[0][3] = -0.0;
-    right[1][3] = -0.0;
+    right[0][3] = -1.0;
+    right[1][3] = -1.0;
     right[2][3] = -3.0;
     // Act
     let result = left * right;
     // Assert
     let expected: Matrix4 = [
-        [1.0, 0.0, 0.0, -0.0],
-        [0.0, 1.0, 0.0, -0.0],
+        [1.0, 0.0, 0.0, -1.0],
+        [0.0, 1.0, 0.0, -1.0],
         [0.0, 0.0, 1.0, -3.0],
-        [0.0, 0.0, 0.0, -1.0],
+        [0.0, 0.0, 0.0, 1.0],
     ]
     .into();
     assert_float_eq!(Matrix4 expected, result);

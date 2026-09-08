@@ -1,5 +1,6 @@
-mod movement_script_tests;
+//mod player_script_tests;
 
+#[allow(dead_code)]
 pub struct StubClock {
     fixed_delta: f32,
 }

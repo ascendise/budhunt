@@ -17,17 +17,25 @@ impl System for RenderSystem {
         let inputs = events.get_events(|e| event!(e, Event::Input));
         Self::handle_inputs(&inputs, &mut projection);
         let camera = Self::find_camera(entities);
-        let models: Vec<Model> = entities
+        let models: Vec<Renderable> = entities
             .get_entities(Components::MODEL)
             .iter()
-            .map(|m| Self::get_model(m, entities))
+            .map(|m| Renderable::Model(Self::get_model(m, entities)))
             .collect();
-        let lights: Vec<Light> = entities
+        let mut lights: Vec<Renderable> = entities
             .get_entities(Components::LIGHT)
             .iter()
-            .map(|l| Self::get_light(l, entities))
+            .map(|l| Renderable::Light(Self::get_light(l, entities)))
             .collect();
-        self.renderer.render(&projection, &camera, &models, &lights);
+        let mut renderables = models;
+        renderables.append(&mut lights);
+        let mut lines: Vec<Renderable> = entities
+            .get_entities(Components::LINE)
+            .iter()
+            .map(|l| Renderable::Line(Self::get_line(l, entities)))
+            .collect();
+        renderables.append(&mut lines);
+        self.renderer.render(&projection, &camera, &renderables);
     }
 }
 impl RenderSystem {
@@ -66,7 +74,7 @@ impl RenderSystem {
             Some(Components::Position) or &Default::default()
         );
         let mut model = component!(&model[Components::MODEL], Components::Model).clone();
-        model.transform(position);
+        model.transform.position = &model.transform.position + position;
         model
     }
 
@@ -75,17 +83,23 @@ impl RenderSystem {
             &entities[Components::POSITION][light.id()],
             Some(Components::Position) or &Default::default()
         );
-        let direction = component!(
-            &entities[Components::DIRECTION][light.id()],
-            Some(Components::Direction) or &Default::default()
-        );
         let mut light = component!(&light[Components::LIGHT], Components::Light).clone();
-        light.transform(position, direction);
+        light.transform(position);
         light
+    }
+
+    fn get_line(line: &Entity<'_, Components>, entities: &Entities) -> Line {
+        let position = component!(
+            &entities[Components::POSITION][line.id()],
+            Some(Components::Position) or &Default::default()
+        );
+        let mut line = component!(&line[Components::LINE], Components::Line).clone();
+        line.transform.position = &line.transform.position + position;
+        line
     }
 }
 pub trait Renderer {
-    fn render(&self, projection: &Projection, camera: &Camera, model: &[Model], lights: &[Light]);
+    fn render(&self, projection: &Projection, camera: &Camera, render_targets: &[Renderable]);
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -116,16 +130,18 @@ impl Camera {
         math::look_at(&self.position, &center, &up)
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum Renderable {
+    Model(Model),
+    Light(Light),
+    Line(Line),
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Model {
     pub nodes: Vec<ModelNode>,
-}
-impl Model {
-    pub fn transform(&mut self, direction: &math::Vec3) {
-        for node in &mut self.nodes {
-            node.transform(direction);
-        }
-    }
+    pub transform: Transform,
 }
 pub type VertexArray = u32;
 pub type Shader = u32;
@@ -134,14 +150,8 @@ pub struct ModelNode {
     pub vao: VertexArray,
     pub shader: Shader,
     pub material: Texture,
-    pub transform: Transform,
     pub vertices: i32,
     pub indices: i32,
-}
-impl ModelNode {
-    pub fn transform(&mut self, direction: &math::Vec3) {
-        self.transform.position = &self.transform.position + direction;
-    }
 }
 
 pub type Tex = i32;
@@ -151,11 +161,20 @@ pub struct Texture {
     metallic_roughness_ao: Tex,
 }
 
-#[derive(PartialEq, Debug, Clone, Default)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Transform {
     pub position: math::Vec3,
     /// radians
-    pub rotation: math::Vec3,
+    pub rotation: math::Matrix4, //TODO: Turn into enum Rotation{Eular(Angles), FirstPerson(CameraDirection)}?
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            position: Default::default(),
+            rotation: math::Matrix4::new(1.0),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -163,7 +182,7 @@ pub enum Light {
     Point(PointLight),
 }
 impl Light {
-    pub fn transform(&mut self, position: &math::Vec3, _: &math::Vec3) {
+    pub fn transform(&mut self, position: &math::Vec3) {
         match self {
             Light::Point(point_light) => point_light.position = &point_light.position + position,
         }
@@ -184,28 +203,49 @@ pub struct PointLight {
     pub position: math::Vec3,
 }
 
-pub type CollisionMesh = Vec<math::Vec3>;
-pub const COLLIDER_MESH_NAME: &str = "COLLIDER";
+pub struct MeshMeta {
+    pub collider: Option<Vec<math::Vec3>>,
+    pub points: Vec<math::Vec3>,
+}
+const COLLIDER_NODE_NAME: &str = "COLLIDER";
+const POINT_NODE_PREFIX: &str = "POINT";
 
 /// Reads glb file from file system and returns a [Mesh] consisting of all the meshes inside the glb.
-/// If a [gltf::Mesh] has the [gltf::Mesh::name] "COLLIDER", it gets returned separately as [ColllisionMesh].
+/// If a [gltf::Mesh] has the [gltf::Mesh::name] "COLLIDER", it get's returned as [MeshMeta::collider]
 ///
-/// NOTE: In Blender, make sure the MESH (green symbol) is called "COLLIDER",
+/// If a [gltf::Node] has the prefix [gltf::Node::name] "POINT", it's translation get's read and
+/// returned with all other points in [MeshMeta::points]
+///
+/// NOTE: In Blender, make sure the MESH (green symbol) is called "COLLIDER/POINT",
 /// not just the OBJECT (orange symbol, parent of mesh).
-pub fn load_glb_file(gltf_path: &std::path::Path) -> (Mesh, Option<CollisionMesh>) {
+pub fn load_mesh_from_glb(gltf_path: &std::path::Path) -> (Mesh, MeshMeta) {
     let (document, buffers, images) = gltf::import(gltf_path).unwrap();
     let mut collider = None;
+    let mut points = vec![];
     let nodes: Vec<MeshNode> = document
-        .meshes()
-        .filter_map(|m| {
-            if m.name() == Some(COLLIDER_MESH_NAME) {
-                let collider_mesh =
-                    load_collider_mesh(&m, &buffers).expect("failed to load collider mesh");
-                collider = Some(collider_mesh);
-                None
+        .nodes()
+        .filter_map(|node| {
+            let mesh = node.mesh();
+            if let Some(mesh) = mesh {
+                if mesh.name() == Some(COLLIDER_NODE_NAME) {
+                    let collider_mesh =
+                        load_collider_mesh(&mesh, &buffers).expect("failed to load collider mesh");
+                    collider = Some(collider_mesh);
+                    None
+                } else {
+                    let mesh_node =
+                        load_mesh_node(&mesh, &buffers, &images).expect("failed to load mesh");
+                    Some(mesh_node)
+                }
             } else {
-                let mesh_node = load_mesh_node(&m, &buffers, &images).expect("failed to load mesh");
-                Some(mesh_node)
+                if let Some(name) = node.name()
+                    && name.starts_with(POINT_NODE_PREFIX)
+                {
+                    let point =
+                        load_point(&node).unwrap_or_else(|| panic!("failed to load point {name}"));
+                    points.push(point);
+                }
+                None
             }
         })
         .collect();
@@ -213,24 +253,37 @@ pub fn load_glb_file(gltf_path: &std::path::Path) -> (Mesh, Option<CollisionMesh
         panic!("No model found!")
     }
     let mesh = Mesh { nodes };
-    (mesh, collider)
+    let metainfo = MeshMeta { collider, points };
+    (mesh, metainfo)
 }
 
 fn load_collider_mesh(
     mesh: &gltf::Mesh<'_>,
     buffers: &[gltf::buffer::Data],
-) -> Option<CollisionMesh> {
+) -> Option<Vec<math::Vec3>> {
     let primitives: Vec<_> = mesh.primitives().collect();
     let primitive = primitives.first()?;
     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
     let positions: Vec<math::Vec3> = reader
-        .read_positions()
-        .expect("No positions found")
+        .read_positions()?
         .map(|v| vec3!(v[0], v[1], v[2]))
         .collect();
-    let indices = reader.read_indices().expect("No indices found").into_u32();
+    let indices = reader.read_indices()?.into_u32();
     let mesh = indices.map(|i| positions[i as usize].clone()).collect();
     Some(mesh)
+}
+
+fn load_point(node: &gltf::Node<'_>) -> Option<math::Vec3> {
+    if let gltf::scene::Transform::Decomposed {
+        translation,
+        rotation: _,
+        scale: _,
+    } = node.transform()
+    {
+        Some(vec3!(translation[0], translation[1], translation[2]))
+    } else {
+        None
+    }
 }
 
 fn load_mesh_node(
@@ -305,6 +358,12 @@ fn read_texture(images: &[gltf::image::Data], texture: gltf::Texture<'_>) -> Ima
         width: texture.width,
         height: texture.height,
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Line {
+    pub transform: Transform,
+    pub shader: Shader,
 }
 
 pub struct Mesh {

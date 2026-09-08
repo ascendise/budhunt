@@ -1,3 +1,6 @@
+#[cfg(test)]
+pub mod tests;
+
 #[macro_export]
 macro_rules! assert_float_eq {
     (Matrix4 $left:expr, $right:expr) => {{
@@ -46,18 +49,21 @@ macro_rules! assert_float_eq {
 // https://web.archive.org/web/20251227112838/https://floating-point-gui.de/errors/comparison/
 #[macro_export]
 macro_rules! float_is_near {
-    ($left:expr, $right:expr) => {
+    ($left:expr, $right:expr, $epsilon: expr) => {
         if $left == $right {
             true
         } else {
             let left_abs = $left.abs();
             let right_abs = $right.abs();
-            let diff = (left_abs - right_abs).abs();
+            let diff = ($left - $right).abs();
             if $left == 0.0 || $right == 0.0 || left_abs + right_abs < f32::MIN_POSITIVE {
-                diff < f32::EPSILON
+                diff < ($epsilon * f32::MIN_POSITIVE)
             } else {
-                diff / f32::min(left_abs + right_abs, f32::MAX) < f32::EPSILON
+                diff / f32::min(left_abs + right_abs, f32::MAX) < $epsilon
             }
         }
+    };
+    ($left:expr, $right:expr) => {
+        $crate::float_is_near!($left, $right, f32::EPSILON)
     };
 }

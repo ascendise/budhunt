@@ -1,16 +1,7 @@
-use crate::Component;
 use crate::Entities;
 use crate::Entity;
+use crate::tests::TestComponents;
 use pretty_assertions::assert_eq;
-
-#[derive(Component, PartialEq, Clone, Debug)]
-pub enum TestComponents {
-    Number(u32),
-    Decimal(f32),
-    #[allow(dead_code)]
-    Bool(bool),
-    Marker,
-}
 
 #[test]
 pub fn create_entity_should_create_new_buckets_for_components() {
@@ -319,14 +310,63 @@ pub fn update_and_commit_should_allow_setting_multiple_components_at_once() {
 }
 
 #[test]
+pub fn update_and_commit_should_allow_creating_new_entities() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<TestComponents, 32>();
+    for _ in 0..5 {
+        entities.create_entity(vec![TestComponents::Decimal(1.0)]);
+    }
+    // Act
+    let mut updates = entities.update();
+    let new_entity = updates.spawn(vec![TestComponents::Number(123), TestComponents::Marker]);
+    updates.set(new_entity, TestComponents::Decimal(4.5));
+    entities.commit(updates);
+    // Assert
+    let expected_flags = TestComponents::NUMBER | TestComponents::DECIMAL | TestComponents::MARKER;
+    assert_eq!(
+        expected_flags, entities.register[new_entity],
+        "Bitflags were not updated!"
+    );
+    assert_eq!(
+        &Some(TestComponents::Number(123)),
+        &entities[TestComponents::NUMBER][new_entity],
+        "Bucket for marker component created!"
+    );
+    assert_eq!(
+        &Some(TestComponents::Decimal(4.5)),
+        &entities[TestComponents::DECIMAL][new_entity],
+        "Bucket for marker component created!"
+    );
+}
+
+#[test]
+pub fn update_and_commit_should_update_entity_count() {
+    // Arrange
+    let mut entities = Entities::empty_custom::<TestComponents, 32>();
+    // Act
+    let mut updates = entities.update();
+    for i in 0..5 {
+        updates.spawn(vec![TestComponents::Number(i)]);
+    }
+    entities.commit(updates);
+    // Assert
+    assert_eq!(5, entities.entities_count);
+    for i in 0..5 {
+        assert_eq!(
+            &Some(TestComponents::Number(i)),
+            &entities[TestComponents::NUMBER][i as usize]
+        )
+    }
+}
+
+#[test]
 #[should_panic]
-pub fn update_and_commit_should_panic_if_pending_updates_drop_before_commit() {
+pub fn update_and_commit_should_panic_when_trying_to_set_entity_index_outside_of_range() {
     // Arrange
     let entities = Entities::empty_custom::<TestComponents, 32>();
     let mut updates = entities.update();
-    updates.set(0, TestComponents::Number(123));
     // Act
-    // No Entities::commit();
+    updates.set(0, TestComponents::Number(123));
     // Assert
-    // Panics!
+    // Should have panicked!
 }

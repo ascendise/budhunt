@@ -1,9 +1,27 @@
 use crate::{
     Components, Entities, Event, Events, System, event, math,
-    physics::{self, Collider, CollisionEvent, CollisionSystem},
+    physics::{self, Collider, CollisionEvent, CollisionSystem, CompoundCollisionEvent},
     vec3,
 };
 use pretty_assertions::assert_eq;
+
+const CUBE: [math::Vec3; 8] = [
+    vec3!(-0.5, -0.5, 0.5),
+    vec3!(0.5, -0.5, 0.5),
+    vec3!(0.5, 0.5, 0.5),
+    vec3!(-0.5, 0.5, 0.5),
+    vec3!(-0.5, 0.5, -0.5),
+    vec3!(0.5, 0.5, -0.5),
+    vec3!(-0.5, -0.5, -0.5),
+    vec3!(0.5, -0.5, -0.5),
+];
+pub fn cube(size: f32) -> Collider {
+    let mut cube = vec![];
+    for vertex in CUBE {
+        cube.push(vertex * size);
+    }
+    Collider::new(cube)
+}
 
 #[test]
 pub fn run_should_push_event_for_collision() {
@@ -35,19 +53,18 @@ pub fn run_should_push_event_for_collision() {
         event
     });
     assert!(!events.is_empty(), "No collision event pushed!");
-    assert_eq!(
-        vec![
-            CollisionEvent {
-                entity_id: 0,
-                collision_point: None
-            },
-            CollisionEvent {
-                entity_id: 1,
-                collision_point: None
-            },
-        ],
-        events
-    );
+    let expected_event = vec![
+        CollisionEvent {
+            entity_id: 0,
+            collision_point: None,
+        },
+        CollisionEvent {
+            entity_id: 1,
+            collision_point: None,
+        },
+    ];
+    let expected_event = CompoundCollisionEvent::new(expected_event);
+    assert_eq!(vec!(expected_event), events);
 }
 
 #[test]
@@ -78,24 +95,6 @@ pub fn run_should_not_push_event_if_no_collision() {
     assert!(events.is_empty(), "Unexpected collision event pushed!");
 }
 
-const CUBE: [math::Vec3; 8] = [
-    vec3!(-0.5, -0.5, 0.5),
-    vec3!(0.5, -0.5, 0.5),
-    vec3!(0.5, 0.5, 0.5),
-    vec3!(-0.5, 0.5, 0.5),
-    vec3!(-0.5, 0.5, -0.5),
-    vec3!(0.5, 0.5, -0.5),
-    vec3!(-0.5, -0.5, -0.5),
-    vec3!(0.5, -0.5, -0.5),
-];
-pub fn cube(size: f32) -> Collider {
-    let mut cube = vec![];
-    for vertex in CUBE {
-        cube.push(vertex * size);
-    }
-    Collider::new(cube)
-}
-
 #[test]
 pub fn run_should_calculate_collision_point_for_cube_moving_into_static_cube() {
     // Arrange
@@ -117,15 +116,21 @@ pub fn run_should_calculate_collision_point_for_cube_moving_into_static_cube() {
     let events = Events::empty();
     sut.run(&mut entities, &events);
     // Assert
+    let events = events.get_events(|e| {
+        let event = event!(e, Event::Collision);
+        assert!(event.is_some(), "Non-collision event pushed unexpectedly!");
+        event
+    });
     let expected_events = vec![
-        Event::Collision(CollisionEvent {
+        CollisionEvent {
             entity_id: static_cube,
             collision_point: None, // Static cube should not get displaced
-        }),
-        Event::Collision(CollisionEvent {
+        },
+        CollisionEvent {
             entity_id: moving_cube,
             collision_point: Some(vec3!(-1.0, 0.0, 0.0)),
-        }),
+        },
     ];
-    assert_eq!(expected_events, events.get_all_events())
+    let expected_events = CompoundCollisionEvent::new(expected_events);
+    assert_eq!(vec![expected_events], events)
 }

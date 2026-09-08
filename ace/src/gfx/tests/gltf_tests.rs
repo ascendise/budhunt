@@ -4,13 +4,13 @@ use crate::gfx::{self, MeshNode};
 use pretty_assertions::assert_eq;
 
 #[test]
-pub fn load_glb_file_should_load_valid_file_into_mesh() {
+pub fn load_mesh_from_glb_should_load_valid_file_into_mesh() {
     // Arrange
     // This is a file exported from Blender containing three primitive
     // mesh nodes (cube, cylinder, sphere) with their own material each.
     let test_model = Path::new("./src/gfx/tests/TestModel.glb");
     // Act
-    let (mesh, _) = gfx::load_glb_file(test_model);
+    let (mesh, _) = gfx::load_mesh_from_glb(test_model);
     // Assert
     assert_eq!(3, mesh.nodes.len());
     assert_node_not_empty(&mesh.nodes[0]);
@@ -24,15 +24,17 @@ fn assert_node_not_empty(node: &MeshNode) {
 }
 
 #[test]
-pub fn load_glb_file_should_load_collider() {
+pub fn load_mesh_from_glb_should_load_collider() {
     // Arrange
     // This is a file exported from Blender containing two primitives,
-    // the model itself and a collider (a node called COLLIDER).
+    // the model itself, a collider (a node called COLLIDER)
+    // and two single vertices (called POINT_TEST{1,2})
     let test_model = Path::new("./src/gfx/tests/TestModelWithCollider.glb");
     // Act
-    let (mesh, collider) = gfx::load_glb_file(test_model);
+    let (mesh, metainfo) = gfx::load_mesh_from_glb(test_model);
     // Assert
-    assert!(collider.is_some(), "collider was not loaded!");
+    assert!(metainfo.collider.is_some(), "collider was not loaded!");
+    assert_eq!(2, metainfo.points.len(), "points were not (all) loaded!");
     assert_eq!(1, mesh.nodes.len());
     assert_node_not_empty(&mesh.nodes[0]);
 }

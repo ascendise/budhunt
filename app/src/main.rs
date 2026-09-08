@@ -1,4 +1,4 @@
-use crate::scripts::MovementScript;
+use crate::scripts::PlayerScript;
 use ace::{
     component,
     gfx::{self},
@@ -18,6 +18,8 @@ static FRAGMENT_SHADER_PBR: &str = include_str!("../shaders/pbr.fs.glsl");
 static TONEMAPPING_SHADER: &str = include_str!("../shaders/tonemapping.glsl");
 static VERTEX_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.vs.glsl");
 static FRAGMENT_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.fs.glsl");
+static VERTEX_SHADER_LINE: &str = include_str!("../shaders/line.vs.glsl");
+static FRAGMENT_SHADER_LINE: &str = include_str!("../shaders/line.fs.glsl");
 
 fn box_collider(width: f32, height: f32, depth: f32) -> ace::physics::Collider {
     let vertices = vec![
@@ -38,29 +40,33 @@ fn main() {
     let window = setup_window(&mut glfw);
     let mut renderer = gfx::opengl::OpenGlRenderer::init();
     set_skybox(&mut renderer);
-    let shader_program = renderer
+    let pbr_program = renderer
         .compile_shader(VERTEX_SHADER_PBR, FRAGMENT_SHADER_PBR, TONEMAPPING_SHADER)
         .expect("Failed to compile model shader");
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
-    let collider = box_collider(0.5, 2.0, 0.5);
+    let collider = box_collider(0.1, 1.0, 0.1);
+    let lines_program = renderer
+        .compile_shader(VERTEX_SHADER_LINE, FRAGMENT_SHADER_LINE, TONEMAPPING_SHADER)
+        .expect("Failed to compile model shader");
     spawn_player(
         &mut renderer,
-        shader_program,
+        pbr_program,
+        lines_program,
         &mut entities,
         clock.clone(),
         collider,
     );
-    spawn_targets(&mut renderer, shader_program, &mut entities);
+    spawn_targets(&mut renderer, pbr_program, &mut entities);
     spawn_point_lights(&mut entities);
-    spawn_floor(&mut renderer, shader_program, &mut entities);
+    spawn_floor(&mut renderer, pbr_program, &mut entities);
     let window = Arc::new(Mutex::new(window));
     let mut world = setup_world(renderer, entities, clock, &window);
-    print_opengl_errors();
     while !window.lock().unwrap().should_close() {
         world.run_frame();
         window.lock().unwrap().swap_buffers();
         glfw.poll_events();
+        print_opengl_errors();
     }
 }
 
@@ -102,7 +108,7 @@ fn spawn_targets(
     entities: &mut ace::Entities,
 ) -> ace::physics::Collider {
     // Collider should be hitting player even if visible object is very high (for testing)
-    let (mesh, collider) = gfx::load_glb_file(Path::new("./app/models/Target.glb"));
+    let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"));
     let model = renderer.load_mesh(&mesh, shader_program);
     let targets = [
         vec3!(0.0, 0.0, 0.0),
@@ -116,7 +122,8 @@ fn spawn_targets(
         vec3!(1.5, 0.2, -1.5),
         vec3!(-1.3, 1.0, -1.5),
     ];
-    let collider = ace::physics::Collider::new(collider.expect("no collider found for Target.glb"));
+    let collider =
+        ace::physics::Collider::new(metainfo.collider.expect("no collider found for Target.glb"));
     for target in targets {
         let position = ace::Components::Position(target);
         let collider = ace::Components::Collider(collider.clone());
@@ -164,7 +171,7 @@ fn spawn_floor(
     shader_program: u32,
     entities: &mut ace::Entities,
 ) {
-    let (mut plane_mesh, _) = gfx::load_glb_file(Path::new("./app/models/Plane.glb"));
+    let (mut plane_mesh, _) = gfx::load_mesh_from_glb(Path::new("./app/models/Plane.glb"));
     // Scale / Move model programatically
     plane_mesh.nodes[0].vertices = plane_mesh.nodes[0]
         .vertices
@@ -185,21 +192,30 @@ fn spawn_floor(
 
 fn spawn_player(
     renderer: &mut gfx::opengl::OpenGlRenderer,
-    shader_program: gfx::Shader,
+    pbr_shader: gfx::Shader,
+    bullet_shader: gfx::Shader,
     entities: &mut ace::Entities,
     clock: Box<ace::glfw_input::GlfwClock>,
     collider: ace::physics::Collider,
 ) {
-    let (mesh, _) = gfx::load_glb_file(Path::new("./app/models/Rifle.glb"));
-    let model = renderer.load_mesh(&mesh, shader_program);
+    let (rifle_mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Rifle.glb"));
+    let rifle_model = renderer.load_mesh(&rifle_mesh, pbr_shader);
+    let mut player_script = PlayerScript::new(clock);
+    player_script.set_bullet_shader(bullet_shader);
+    let point = metainfo
+        .points
+        .first()
+        .expect("muzzle point data missing")
+        .clone();
     entities.create_entity(vec![
-        //ace::Components::Position(vec3!(0.0, 0.0, -50.0)),
-        ace::Components::Position(vec3!(0.0, 0.0, 2.0)),
+        ace::Components::Position(vec3!(0.0, 0.0, 5.0)),
+        //ace::Components::Position(vec3!(0.0, 0.0, -20.0)),
         ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
-        ace::Components::Scripts(vec![Box::new(MovementScript::new(clock))]),
+        ace::Components::Point(point),
+        ace::Components::Scripts(vec![Box::new(player_script)]),
         ace::Components::Player,
         ace::Components::Collider(collider),
-        ace::Components::Model(model),
+        ace::Components::Model(rifle_model),
         ace::Components::RigidBody(ace::physics::RigidBody::new(vec3!(0.0))),
     ]);
 }
@@ -223,10 +239,18 @@ fn setup_world(
     let physics_system = Box::new(ace::physics::PhysicsSystem::new(Some(
         ace::physics::CollisionSystem,
     )));
-    let input_listener = ace::glfw_input::GlfwInputListener::init(window.clone());
+    let bullet_system = Box::new(scripts::BulletSystem);
+    let glfw_inputs = ace::glfw_input::GlfwInputsImpl::new(window.clone());
+    let input_listener = ace::glfw_input::GlfwInputListener::init(
+        Box::new(glfw_inputs),
+        ace::glfw_input::Sensitivity {
+            mouse_pointer: 0.1,
+            scroll_wheel: 10.0,
+        },
+    );
     ace::World::init(
         entities,
-        vec![render_system, script_system, physics_system],
+        vec![render_system, script_system, physics_system, bullet_system],
         clock.clone(),
         Box::new(input_listener),
     )

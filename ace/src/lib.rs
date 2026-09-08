@@ -12,95 +12,10 @@ pub mod physics;
 pub mod scripts;
 pub use scripts::Script;
 
-use crate::physics::CollisionEvent;
+use crate::physics::CompoundCollisionEvent;
 
 #[cfg(test)]
 mod tests;
-
-#[macro_export]
-/// Used to quickly map a Component enum variant to it's inner value
-///
-/// # Usage
-/// ```
-/// use ace::component;
-/// // used for implementing custom components
-/// use ace_proc_macros::Component;
-/// use ace::Component;
-///
-/// #[derive(Component, PartialEq, Clone, Debug)]
-/// enum MyComponents { CompA(usize), CompB(f32), CompC}
-///
-/// // Map component to known type
-/// let comp: MyComponents = MyComponents::CompA(42);
-/// let value: usize = component!(comp, MyComponents::CompA);
-/// assert_eq!(42, value);
-///
-/// // Map option to known type
-/// let comp = Some(MyComponents::CompA(42));
-/// let value: usize = component!(comp, Some(MyComponents::CompA));
-/// assert_eq!(42, value);
-///
-/// // Map option to known type or return default
-/// let comp = None;
-/// let value: usize = component!(comp, Some(MyComponents::CompA) or 42);
-/// assert_eq!(42, value);
-/// ```
-/// # Panics
-/// If you assume the wrong component variant, the macro will panic
-macro_rules! component {
-    ($v:expr, Some($e:path)) => {
-        match $v {
-            Some($e(v)) => v,
-            _ => panic!("this is not a {}", stringify!($e)),
-        }
-    };
-    ($v:expr, Some($e:path) or $default:expr) => {
-        match $v {
-            Some($e(v)) => v,
-            _ => $default,
-        }
-    };
-    ($v:expr, $e:path) => {
-        match $v {
-            $e(v) => v,
-            _ => panic!("this is not a {}", stringify!($e)),
-        }
-    };
-}
-
-#[macro_export]
-/// Transforms an [Option<Component>] into an [Option<T>]. If the component does not match,
-/// [maybe_component] returns [None]
-///
-/// # Usage
-/// ```
-/// use ace::maybe_component;
-/// // used for implementing custom components
-/// use ace_proc_macros::Component;
-/// use ace::Component;
-///
-/// #[derive(Component, PartialEq, Clone, Debug)]
-/// enum MyComponents { CompA(usize), CompB(f32), CompC}
-///
-/// // Map component with matching type
-/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
-/// let value: Option<usize> = maybe_component!(comp, MyComponents::CompA);
-/// assert_eq!(Some(42), value);
-///
-/// // Map component with mismatching type
-/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
-/// let value: Option<f32> = maybe_component!(comp, MyComponents::CompB);
-/// assert_eq!(None, value);
-/// ```
-///
-macro_rules! maybe_component {
-    ($v:expr, $e:path) => {
-        match $v {
-            Some($e(v)) => Some(v),
-            _ => None,
-        }
-    };
-}
 
 pub struct World {
     entities: Entities,
@@ -224,7 +139,7 @@ impl<T: Component, const E: usize> Entities<T, E> {
     ///     component!(&entities[Components::POSITION][id], Some(Components::Position)));
     /// ```
     pub fn update(&self) -> Update<T> {
-        Update::new()
+        Update::new(self.entities_count)
     }
 
     pub fn commit(&mut self, mut updates: Update<T>) {
@@ -238,6 +153,7 @@ impl<T: Component, const E: usize> Entities<T, E> {
                 bucket[entity_id] = Some(value);
             }
         }
+        self.entities_count = updates.entities_count;
     }
     fn get_or_create_bucket(&mut self, type_id: u32) -> &mut [Option<T>] {
         match self.components.entry(type_id) {
@@ -284,6 +200,10 @@ impl<'a, T: Component> Entity<'a, T> {
     pub fn id(&self) -> usize {
         self.id
     }
+
+    pub fn get(&self, component_type: u32) -> Option<&T> {
+        self.components.get(&component_type).copied()
+    }
 }
 impl<'a, T: Component> Index<u32> for Entity<'a, T> {
     type Output = T;
@@ -294,18 +214,40 @@ impl<'a, T: Component> Index<u32> for Entity<'a, T> {
             .expect("Tried to access a component missing in this entity")
     }
 }
+
 #[derive(Default)]
 pub struct Update<T: Component> {
+    entities_count: usize,
     updates: IndexMap<u32, IndexMap<usize, T>>,
 }
 impl<T: Component> Update<T> {
-    pub fn new() -> Self {
+    fn new(entities_count: usize) -> Self {
         Self {
+            entities_count,
             updates: IndexMap::new(),
         }
     }
 
+    pub fn spawn(&mut self, components: Vec<T>) -> usize {
+        let id = self.entities_count;
+        for component in components {
+            self.set_unchecked(id, component);
+        }
+        self.entities_count += 1;
+        id
+    }
+
     pub fn set(&mut self, entity_id: usize, component: T) -> &mut Self {
+        if entity_id >= self.entities_count {
+            panic!(
+                "entity id outside expected range 0..{}",
+                self.entities_count - 1
+            )
+        }
+        self.set_unchecked(entity_id, component)
+    }
+
+    fn set_unchecked(&mut self, entity_id: usize, component: T) -> &mut Self {
         let type_id = component.get_type();
         match self.updates.entry(type_id) {
             Entry::Occupied(mut entry) => {
@@ -327,20 +269,15 @@ impl<T: Component> Update<T> {
         self
     }
 }
-impl<T: Component> Drop for Update<T> {
-    fn drop(&mut self) {
-        if !self.updates.is_empty() {
-            panic!("Updates with pending changes dropped! Did you forget Entities::commit()?")
-        }
-    }
-}
 
 #[derive(Component)]
 pub enum Components {
     Position(math::Vec3),
     Direction(math::Vec3),
+    Point(math::Vec3),
     Model(gfx::Model),
     Light(gfx::Light),
+    Line(gfx::Line),
     Scripts(Vec<Box<dyn scripts::Script>>),
     Player,
     Collider(physics::Collider),
@@ -368,7 +305,6 @@ pub trait Clock {
 
 pub trait InputListener {
     fn get_inputs(&self) -> Vec<Input>;
-    fn get_cursor_offset(&self) -> math::Vec2;
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -381,10 +317,112 @@ pub enum Input {
     MoveCursor(math::Vec2),
     /// y offset
     Scroll(f32),
+    Shoot,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Input(Input),
-    Collision(CollisionEvent),
+    Collision(CompoundCollisionEvent),
+}
+
+#[macro_export]
+/// Used to quickly map a Component enum variant to it's inner value
+///
+/// # Usage
+/// ```
+/// use ace::component;
+/// // used for implementing custom components
+/// use ace_proc_macros::Component;
+/// use ace::Component;
+///
+/// #[derive(Component, PartialEq, Clone, Debug)]
+/// enum MyComponents { CompA(usize), CompB(f32), CompC}
+///
+/// // Map component to known type
+/// let comp: MyComponents = MyComponents::CompA(42);
+/// let value: usize = component!(comp, MyComponents::CompA);
+/// assert_eq!(42, value);
+///
+/// // Map option to known type
+/// let comp = Some(MyComponents::CompA(42));
+/// let value: usize = component!(comp, Some(MyComponents::CompA));
+/// assert_eq!(42, value);
+///
+/// // Map option to known type or return default
+/// let comp = None;
+/// let value: usize = component!(comp, Some(MyComponents::CompA) or 42);
+/// assert_eq!(42, value);
+/// ```
+/// # Panics
+/// If you assume the wrong component variant, the macro will panic
+macro_rules! component {
+    ($v:expr, Some($e:path)) => {
+        match $v {
+            Some($e(v)) => v,
+            _ => panic!("this is not a {}", stringify!($e)),
+        }
+    };
+    ($v:expr, Some($e:path) or $default:expr) => {
+        match $v {
+            Some($e(v)) => v,
+            _ => $default,
+        }
+    };
+    ($v:expr, $e:path) => {
+        match $v {
+            $e(v) => v,
+            _ => panic!("this is not a {}", stringify!($e)),
+        }
+    };
+}
+
+#[macro_export]
+/// Transforms a [Component] into an [Option<T>]. If the component does not match,
+/// [maybe_component] returns [None]
+///
+/// # Usage
+/// ```
+/// use ace::maybe_component;
+/// // used for implementing custom components
+/// use ace_proc_macros::Component;
+/// use ace::Component;
+///
+/// #[derive(Component, PartialEq, Clone, Debug)]
+/// enum MyComponents { CompA(usize), CompB(f32), CompC}
+///
+/// // Map Option with matching type
+/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
+/// let value: Option<usize> = maybe_component!(comp, Some(MyComponents::CompA));
+/// assert_eq!(Some(42), value);
+///
+/// // Map Option with mismatching type
+/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
+/// let value: Option<f32> = maybe_component!(comp, Some(MyComponents::CompB));
+/// assert_eq!(None, value);
+///
+/// // Map Component with matching type
+/// let comp: MyComponents = MyComponents::CompA(42);
+/// let value: Option<usize> = maybe_component!(comp, MyComponents::CompA);
+/// assert_eq!(Some(42), value);
+///
+/// // Map Component with mismatching type
+/// let comp: Option<MyComponents> = Some(MyComponents::CompA(42));
+/// let value: Option<f32> = maybe_component!(comp, Some(MyComponents::CompB));
+/// assert_eq!(None, value);
+/// ```
+///
+macro_rules! maybe_component {
+    ($v:expr, Some($e:path)) => {
+        match $v {
+            Some($e(v)) => Some(v),
+            _ => None,
+        }
+    };
+    ($v:expr, $e:path) => {
+        match $v {
+            $e(v) => Some(v),
+            _ => None,
+        }
+    };
 }

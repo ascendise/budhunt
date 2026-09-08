@@ -3,55 +3,70 @@ use std::sync::{Arc, Mutex};
 use crate::*;
 use crate::{Clock, math};
 
+#[cfg(test)]
+mod tests;
+
 pub struct GlfwInputListener {
-    window: Arc<Mutex<glfw::PWindow>>,
+    glfw_inputs: Box<dyn GlfwInputs>,
     cursor_offset: Arc<Mutex<math::Vec2>>,
     scroll: Arc<Mutex<f32>>,
+    is_shooting: Mutex<bool>,
 }
 impl GlfwInputListener {
-    pub fn init(window: Arc<Mutex<glfw::PWindow>>) -> Self {
-        let mut win = window.lock().unwrap();
-        let cursor_offset = Self::setup_cursor_callback(&mut win);
-        let scroll = Self::setup_scroll_callback(&mut win);
-        drop(win);
+    pub fn init(glfw_inputs: Box<dyn GlfwInputs>, sensitivity: Sensitivity) -> Self {
+        let cursor_offset =
+            Self::setup_cursor_callback(glfw_inputs.as_ref(), sensitivity.mouse_pointer);
+        let scroll = Self::setup_scroll_callback(glfw_inputs.as_ref(), sensitivity.scroll_wheel);
         Self {
-            window,
+            glfw_inputs,
             cursor_offset,
             scroll,
+            is_shooting: Mutex::new(false),
         }
     }
-
-    fn setup_cursor_callback(window: &mut glfw::PWindow) -> Arc<Mutex<math::Vec2>> {
-        let shared_offset = Arc::new(Mutex::new(vec2!(0.0)));
-        let cursor_offset = shared_offset.clone();
-        let shared_position = Arc::new(Mutex::new(vec2!(0.0)));
-        let cursor_position = shared_position.clone();
-        window.set_cursor_pos_callback(move |_, x, y| {
-            let sensitivity = 0.1;
+    fn setup_cursor_callback(
+        glfw_inputs: &dyn GlfwInputs,
+        sensitivity: f32,
+    ) -> Arc<Mutex<math::Vec2>> {
+        let cursor_offset_arc = Arc::new(Mutex::new(vec2!(0.0)));
+        let cursor_offset = cursor_offset_arc.clone();
+        let cursor_position = Arc::new(Mutex::new(vec2!(0.0)));
+        let first_input = Mutex::new(true);
+        let update_cursor_offset = move |position: math::Vec2| {
             let mut cursor_offset = cursor_offset.lock().unwrap();
             let mut cursor_position = cursor_position.lock().unwrap();
-            let x = x as f32;
-            let y = y as f32;
+            let mut first_input = first_input.lock().unwrap();
+            if *first_input {
+                *cursor_position = position.clone();
+                *first_input = false;
+            }
+            let x = position.x;
+            let y = position.y;
             let offset_x = x - cursor_position.x;
             let offset_y = cursor_position.y - y;
             cursor_position.x = x;
             cursor_position.y = y;
             cursor_offset.x += offset_x * sensitivity;
             cursor_offset.y = (cursor_offset.y + offset_y * sensitivity).clamp(-89.0, 89.0);
-        });
-        shared_offset
+        };
+        glfw_inputs.on_cursor_move(Box::new(update_cursor_offset));
+        cursor_offset_arc
     }
 
-    fn setup_scroll_callback(window: &mut glfw::PWindow) -> Arc<Mutex<f32>> {
+    fn setup_scroll_callback(glfw_inputs: &dyn GlfwInputs, sensitivity: f32) -> Arc<Mutex<f32>> {
         let shared_scroll = Arc::new(Mutex::new(0.0));
         let scroll = shared_scroll.clone();
-        window.set_scroll_callback(move |_, _, y| {
-            let sensitivity = 10.0;
-            let y = y as f32;
+        let update_scroll = move |position: math::Vec2| {
             let mut scroll = scroll.lock().unwrap();
-            *scroll += sensitivity * y;
-        });
+            *scroll += sensitivity * position.y;
+        };
+        glfw_inputs.on_scroll(Box::new(update_scroll));
         shared_scroll
+    }
+
+    fn get_cursor_offset(&self) -> math::Vec2 {
+        let offset = self.cursor_offset.lock().unwrap();
+        offset.clone()
     }
 
     fn get_scroll_offset(&self) -> Option<f32> {
@@ -64,31 +79,73 @@ impl GlfwInputListener {
 
 impl InputListener for GlfwInputListener {
     fn get_inputs(&self) -> Vec<Input> {
-        let window = &self.window.lock().unwrap();
+        let glfw_inputs = &self.glfw_inputs;
         let mut inputs = vec![];
-        if window.get_key(glfw::Key::W) == glfw::Action::Press {
+        if glfw_inputs.get_key(glfw::Key::W) == glfw::Action::Press {
             inputs.push(Input::Forward);
         }
-        if window.get_key(glfw::Key::S) == glfw::Action::Press {
+        if glfw_inputs.get_key(glfw::Key::S) == glfw::Action::Press {
             inputs.push(Input::Backwards);
         }
-        if window.get_key(glfw::Key::D) == glfw::Action::Press {
+        if glfw_inputs.get_key(glfw::Key::D) == glfw::Action::Press {
             inputs.push(Input::Right);
         }
-        if window.get_key(glfw::Key::A) == glfw::Action::Press {
+        if glfw_inputs.get_key(glfw::Key::A) == glfw::Action::Press {
             inputs.push(Input::Left);
         }
-        let cursor_offset = Input::MoveCursor(self.get_cursor_offset());
-        inputs.push(cursor_offset);
+        let mut is_shooting = self.is_shooting.lock().unwrap();
+        if glfw_inputs.get_mouse_button(glfw::MouseButtonLeft) == glfw::Action::Press {
+            if !*is_shooting {
+                inputs.push(Input::Shoot);
+            }
+            *is_shooting = true;
+        } else {
+            *is_shooting = false;
+        }
+        inputs.push(Input::MoveCursor(self.get_cursor_offset()));
         if let Some(scroll) = self.get_scroll_offset() {
             inputs.push(Input::Scroll(scroll));
         }
         inputs
     }
+}
 
-    fn get_cursor_offset(&self) -> math::Vec2 {
-        let offset = self.cursor_offset.lock().unwrap();
-        offset.clone()
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct Sensitivity {
+    pub mouse_pointer: f32,
+    pub scroll_wheel: f32,
+}
+
+pub trait GlfwInputs {
+    fn get_key(&self, key: glfw::Key) -> glfw::Action;
+    fn get_mouse_button(&self, mouse_button: glfw::MouseButton) -> glfw::Action;
+    fn on_cursor_move(&self, fun: Box<dyn Fn(math::Vec2)>);
+    fn on_scroll(&self, fun: Box<dyn Fn(math::Vec2)>);
+}
+pub struct GlfwInputsImpl {
+    window: Arc<Mutex<glfw::PWindow>>,
+}
+impl GlfwInputsImpl {
+    pub fn new(window: Arc<Mutex<glfw::PWindow>>) -> Self {
+        Self { window }
+    }
+}
+impl GlfwInputs for GlfwInputsImpl {
+    fn get_key(&self, key: glfw::Key) -> glfw::Action {
+        let window = self.window.lock().unwrap();
+        window.get_key(key)
+    }
+    fn get_mouse_button(&self, mouse_button: glfw::MouseButton) -> glfw::Action {
+        let window = self.window.lock().unwrap();
+        window.get_mouse_button(mouse_button)
+    }
+    fn on_cursor_move(&self, fun: Box<dyn Fn(math::Vec2)>) {
+        let mut window = self.window.lock().unwrap();
+        window.set_cursor_pos_callback(move |_, x, y| fun(vec2!(x as f32, y as f32)));
+    }
+    fn on_scroll(&self, fun: Box<dyn Fn(math::Vec2)>) {
+        let mut window = self.window.lock().unwrap();
+        window.set_scroll_callback(move |_, x, y| fun(vec2!(x as f32, y as f32)));
     }
 }
 

@@ -115,6 +115,6 @@ pub fn run_should_commit_new_entity_spawned_by_script() {
 pub struct SpawnPositionScript(math::Vec3);
 impl Script for SpawnPositionScript {
     fn run(&self, _: &Entity<'_, Components>, _: &Events, updates: &mut Update<Components>) {
-        updates.spawn(vec![Components::Position(self.0.clone())]);
+        updates.spawn(vec![Components::Position(self.0)]);
     }
 }

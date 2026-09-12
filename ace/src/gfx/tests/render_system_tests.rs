@@ -7,7 +7,7 @@ fn setup(spy_renderer: &SpyRenderer) -> RenderSystem {
     let projection = Projection {
         width: 1280.0,
         height: 720.0,
-        fov: 45.0,
+        fov: math::radians(45.0),
         near: 0.1,
         far: 100.0,
     };
@@ -97,8 +97,8 @@ pub fn render_should_transform_models_with_position() {
     assert_float_eq!(Vec3 vec3!(6.0), model.transform.position);
 }
 
-#[test_case(Input::Scroll(-10.0), 55.0)]
-#[test_case(Input::Scroll(10.0), 35.0)]
+#[test_case(Input::Scroll(-10.0), math::radians(55.0))]
+#[test_case(Input::Scroll(10.0), math::radians(35.0))]
 pub fn render_should_change_fov_on_scroll(scroll: Input, expected_fov: f32) {
     // Arrange
     let spy = SpyRenderer::new();
@@ -115,7 +115,7 @@ pub fn render_should_change_fov_on_scroll(scroll: Input, expected_fov: f32) {
     sut.run(&mut entities, &events);
     // Assert
     let frame = spy.frame(0);
-    assert_eq!(expected_fov, frame.projection.fov);
+    assert_float_eq!(expected_fov, frame.projection.fov);
 }
 
 #[test_case(Input::Scroll(-10.0), RenderSystem::MAX_FOV)]
@@ -137,5 +137,5 @@ pub fn render_should_clamp_fov_range(scroll: Input, expected_fov: f32) {
     sut.run(&mut entities, &events);
     // Assert
     let frame = spy.frame(0);
-    assert_eq!(expected_fov, frame.projection.fov);
+    assert_float_eq!(expected_fov, frame.projection.fov);
 }

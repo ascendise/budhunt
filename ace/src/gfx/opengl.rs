@@ -6,7 +6,7 @@ use std::{
     ptr::{null, null_mut},
 };
 
-use crate::{gfx::*, vec4};
+use crate::gfx::*;
 
 pub struct OpenGlRenderer {
     texture_count: u32,
@@ -484,7 +484,7 @@ impl<'a> OpenGlShader for ModelShader<'a> {
                                 gl_vec3_uniform(node.shader, &light.color, &subkey(key, "color"));
                                 gl_vec3_uniform(
                                     node.shader,
-                                    &to_view_space(self.view, &light.position, 1.0),
+                                    &to_view_space(self.view, &light.position),
                                     &subkey(key, "position"),
                                 );
                                 point_count += 1;
@@ -572,7 +572,7 @@ fn gl_matrix_uniform(shader: Shader, matrix: &math::Matrix4, key: &str) {
 
 fn gl_vec3_uniform(shader: Shader, value: &math::Vec3, key: &str) {
     let location = gl_get_uniform_location(shader, key);
-    unsafe { gl::Uniform3f(location, value.x, value.y, value.z) }
+    unsafe { gl::Uniform3f(location, value.x(), value.y(), value.z()) }
 }
 
 fn gl_int_uniform(shader: Shader, value: i32, key: &str) {
@@ -594,9 +594,9 @@ fn subkey(key: &str, subkey: &str) -> String {
     format!("{key}.{subkey}")
 }
 
-fn to_view_space(view: &math::Matrix4, vec: &math::Vec3, w: f32) -> math::Vec3 {
-    let res = view * &vec4!(vec.x, vec.y, vec.z, w);
-    vec3!(res.x, res.y, res.z)
+fn to_view_space(view: &math::Matrix4, vec: &math::Vec3) -> math::Vec3 {
+    let res = view * vec.into_vec_with(1.0);
+    res.into_vec()
 }
 
 #[derive(Debug, Clone)]

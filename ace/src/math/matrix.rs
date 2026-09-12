@@ -1,6 +1,9 @@
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
-use crate::math::{Vec3, Vec4};
+use crate::{
+    math::{Vec3, Vec4},
+    vec4,
+};
 #[derive(Debug, PartialEq, Clone)]
 pub struct Matrix4 {
     pub data: [[f32; 4]; 4],
@@ -18,9 +21,9 @@ impl Matrix4 {
 
     pub fn translation(position: &Vec3) -> Self {
         let mut identity = Self::new(1.0);
-        identity[0][3] = position.x;
-        identity[1][3] = position.y;
-        identity[2][3] = position.z;
+        identity[0][3] = position.x();
+        identity[1][3] = position.y();
+        identity[2][3] = position.z();
         identity
     }
 
@@ -212,19 +215,30 @@ impl Mul<&Vec4> for &Matrix4 {
         let y_row = self.data[1];
         let z_row = self.data[2];
         let w_row = self.data[3];
-        Vec4 {
-            x: (x_row[0] * rhs.x) + (x_row[1] * rhs.y) + (x_row[2] * rhs.z) + (x_row[3] * rhs.w),
-            y: (y_row[0] * rhs.x) + (y_row[1] * rhs.y) + (y_row[2] * rhs.z) + (y_row[3] * rhs.w),
-            z: (z_row[0] * rhs.x) + (z_row[1] * rhs.y) + (z_row[2] * rhs.z) + (z_row[3] * rhs.w),
-            w: (w_row[0] * rhs.x) + (w_row[1] * rhs.y) + (w_row[2] * rhs.z) + (w_row[3] * rhs.w),
-        }
+        let x = (x_row[0] * rhs.x())
+            + (x_row[1] * rhs.y())
+            + (x_row[2] * rhs.z())
+            + (x_row[3] * rhs.w());
+        let y = (y_row[0] * rhs.x())
+            + (y_row[1] * rhs.y())
+            + (y_row[2] * rhs.z())
+            + (y_row[3] * rhs.w());
+        let z = (z_row[0] * rhs.x())
+            + (z_row[1] * rhs.y())
+            + (z_row[2] * rhs.z())
+            + (z_row[3] * rhs.w());
+        let w = (w_row[0] * rhs.x())
+            + (w_row[1] * rhs.y())
+            + (w_row[2] * rhs.z())
+            + (w_row[3] * rhs.w());
+        vec4!(x, y, z, w)
     }
 }
 impl Mul<Vec4> for &Matrix4 {
     type Output = Vec4;
 
     fn mul(self, rhs: Vec4) -> Self::Output {
-        self * &rhs
+        self.mul(&rhs)
     }
 }
 impl Mul<&Vec4> for Matrix4 {
@@ -238,7 +252,7 @@ impl Mul<Vec4> for Matrix4 {
     type Output = Vec4;
 
     fn mul(self, rhs: Vec4) -> Self::Output {
-        &self * &rhs
+        &self * rhs
     }
 }
 

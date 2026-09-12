@@ -39,8 +39,8 @@ impl System for RenderSystem {
     }
 }
 impl RenderSystem {
-    pub const MIN_FOV: f32 = 1.0;
-    pub const MAX_FOV: f32 = 120.0;
+    pub const MIN_FOV: f32 = math::radians(1.0);
+    pub const MAX_FOV: f32 = math::radians(120.0);
 
     pub fn new(renderer: Box<dyn Renderer>, projection: gfx::Projection) -> Self {
         Self {
@@ -54,15 +54,15 @@ impl RenderSystem {
             .get_entities(Components::PLAYER | Components::POSITION | Components::DIRECTION);
         let entity = entities.first().expect("Player not found!");
         gfx::Camera {
-            position: component!(&entity[Components::POSITION], Components::Position).clone(),
-            direction: component!(&entity[Components::DIRECTION], Components::Direction).clone(),
+            position: *component!(&entity[Components::POSITION], Components::Position),
+            direction: *component!(&entity[Components::DIRECTION], Components::Direction),
         }
     }
 
     fn handle_inputs(inputs: &[Input], projection: &mut gfx::Projection) {
         for input in inputs {
             if let Input::Scroll(scroll) = input {
-                let fov = projection.fov + -scroll;
+                let fov = projection.fov + math::radians(-scroll);
                 projection.fov = fov.clamp(Self::MIN_FOV, Self::MAX_FOV);
             }
         }
@@ -74,7 +74,7 @@ impl RenderSystem {
             Some(Components::Position) or &Default::default()
         );
         let mut model = component!(&model[Components::MODEL], Components::Model).clone();
-        model.transform.position = &model.transform.position + position;
+        model.transform.position += position;
         model
     }
 
@@ -94,7 +94,7 @@ impl RenderSystem {
             Some(Components::Position) or &Default::default()
         );
         let mut line = component!(&line[Components::LINE], Components::Line).clone();
-        line.transform.position = &line.transform.position + position;
+        line.transform.position += position;
         line
     }
 }
@@ -106,7 +106,7 @@ pub trait Renderer {
 pub struct Projection {
     pub width: f32,
     pub height: f32,
-    /// degrees
+    /// radians
     pub fov: f32,
     pub near: f32,
     pub far: f32,
@@ -114,7 +114,7 @@ pub struct Projection {
 impl Projection {
     fn to_projection_matrix(&self) -> math::Matrix4 {
         let aspect_ratio = self.width / self.height;
-        math::projection(math::radians(self.fov), aspect_ratio, self.near, self.far)
+        math::projection(self.fov, aspect_ratio, self.near, self.far)
     }
 }
 
@@ -125,7 +125,7 @@ pub struct Camera {
 }
 impl Camera {
     fn to_view_matrix(&self) -> math::Matrix4 {
-        let center = &self.position + &self.direction;
+        let center = self.position + self.direction;
         let up = vec3!(0.0, 1.0, 0.0); // We do not allow the player to rotate on the z-axis so up is fixed
         math::look_at(&self.position, &center, &up)
     }
@@ -184,7 +184,7 @@ pub enum Light {
 impl Light {
     pub fn transform(&mut self, position: &math::Vec3) {
         match self {
-            Light::Point(point_light) => point_light.position = &point_light.position + position,
+            Light::Point(point_light) => point_light.position += position,
         }
     }
 }
@@ -269,7 +269,7 @@ fn load_collider_mesh(
         .map(|v| vec3!(v[0], v[1], v[2]))
         .collect();
     let indices = reader.read_indices()?.into_u32();
-    let mesh = indices.map(|i| positions[i as usize].clone()).collect();
+    let mesh = indices.map(|i| positions[i as usize]).collect();
     Some(mesh)
 }
 

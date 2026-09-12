@@ -1,7 +1,7 @@
 use ace::{
     component, event,
     math::{self, rotation_fpv},
-    maybe_component, vec2, vec3, vec4,
+    maybe_component, vec2, vec3,
 };
 
 #[cfg(test)]
@@ -22,7 +22,7 @@ impl ace::Script for PlayerScript {
         let cursor_offset = inputs
             .iter()
             .find(|i| matches!(i, ace::Input::MoveCursor(_)))
-            .map(|i| component!(i, ace::Input::MoveCursor).clone())
+            .map(|i| *component!(i, ace::Input::MoveCursor))
             .unwrap_or(vec2!(0.0));
         let (move_direction, camera_direction) = self.turn_camera(&cursor_offset);
         let rigid_body = self.set_player_velocity(player, &inputs, move_direction);
@@ -31,16 +31,15 @@ impl ace::Script for PlayerScript {
         updates.set_batch(
             player.id(),
             vec![
-                ace::Components::Direction(camera_direction.clone()),
+                ace::Components::Direction(camera_direction),
                 ace::Components::RigidBody(rigid_body),
                 ace::Components::Model(model.clone()),
             ],
         );
-        let position = component!(
+        let position = *component!(
             &player[ace::Components::POSITION],
             ace::Components::Position
-        )
-        .clone();
+        );
         let point = component!(
             &player.get(ace::Components::POINT),
             Some(ace::Components::Point) or &position
@@ -62,19 +61,15 @@ impl PlayerScript {
 
     /// Moves camera on xyz-axis and returns movement direction and current view direction
     fn turn_camera(&self, offset: &math::Vec2) -> (math::Vec3, math::Vec3) {
-        let yaw = math::radians(offset.x);
-        let pitch = math::radians(offset.y);
-        let move_dir = math::Vec3 {
-            x: yaw.cos(),
-            y: 0.0,
-            z: yaw.sin(),
-        };
+        let yaw = math::radians(offset.x());
+        let pitch = math::radians(offset.y());
+        let move_dir = vec3!(yaw.cos(), 0.0, yaw.sin());
         let move_dir = move_dir.normalize();
-        let turn_dir = math::Vec3 {
-            x: yaw.cos() * pitch.cos(),
-            y: pitch.sin(),
-            z: yaw.sin() * pitch.cos(),
-        }
+        let turn_dir = vec3!(
+            yaw.cos() * pitch.cos(),
+            pitch.sin(),
+            yaw.sin() * pitch.cos()
+        )
         .normalize();
         (move_dir, turn_dir)
     }
@@ -107,16 +102,16 @@ impl PlayerScript {
         let up = vec3!(0.0, 1.0, 0.0);
         let strafe = front.cross(&up).normalize();
         if inputs.contains(&ace::Input::Forward) {
-            movement = &movement + &front;
+            movement += front;
         }
         if inputs.contains(&ace::Input::Backwards) {
-            movement = &movement - &front;
+            movement -= front;
         }
         if inputs.contains(&ace::Input::Right) {
-            movement = &(&movement / 2.0) + &strafe;
+            movement = movement / 2.0 + strafe;
         }
         if inputs.contains(&ace::Input::Left) {
-            movement = &(&movement / 2.0) - &strafe;
+            movement = movement / 2.0 - strafe;
         }
         movement * speed
     }
@@ -132,17 +127,16 @@ impl PlayerScript {
         for input in inputs {
             if let ace::Input::Shoot = input {
                 let rotation = rotation_fpv(direction);
-                let muzzle_position = rotate_vec3(muzzle_position, &rotation);
-                let muzzle_position = position + &muzzle_position;
+                let muzzle_position = position + rotate_vec3(muzzle_position, &rotation);
                 let bullet = ace::gfx::Line {
                     transform: ace::gfx::Transform {
-                        position: muzzle_position.clone(),
+                        position: muzzle_position,
                         rotation: rotation.clone(),
                     },
                     shader: self.bullet_shader,
                 };
                 let direction = rotate_vec3(&vec3!(0.0, 0.0, -100.0), &rotation);
-                let end = &muzzle_position + &direction;
+                let end = muzzle_position + direction;
                 let vertices = vec![muzzle_position, end];
                 updates.spawn(vec![
                     ace::Components::Line(bullet),
@@ -155,10 +149,8 @@ impl PlayerScript {
 }
 
 fn rotate_vec3(muzzle_position: &math::Vec3, rotation: &math::Matrix4) -> math::Vec3 {
-    let muzzle_position =
-        rotation * &vec4!(muzzle_position.x, muzzle_position.y, muzzle_position.z, 1.0);
-    let muzzle_position = vec3!(muzzle_position.x, muzzle_position.y, muzzle_position.z);
-    muzzle_position
+    let muzzle_position = rotation * muzzle_position.into_vec_with(1.0);
+    muzzle_position.into_vec()
 }
 
 pub struct BulletSystem;

@@ -84,21 +84,21 @@ impl CpuBaker {
         for i in 0..sample_count {
             let xi = Self::hammersley(i, sample_count);
             let h = Self::importance_sampling_ggx(xi, &front, roughness);
-            let l = &(&h * (2.0 * v.dot(&h))) - &v;
+            let l = (h * (2.0 * v.dot(&h))) - v;
             let l = l.normalize();
-            let nl = l.z.max(0.0);
-            let nh = h.z.max(0.0);
+            let nl = l.z().max(0.0);
+            let nh = h.z().max(0.0);
             let vh = v.dot(&h).max(0.0);
             if nl > 0.0 {
                 let g = Self::geometry_smith(&front, &v, &l, roughness);
                 let g_vis = (g * vh) / (nh * direction);
                 let fc = (1.0 - vh).powi(5);
-                pixel.x += (1.0 - fc) * g_vis;
-                pixel.y += fc * g_vis;
+                *pixel.mut_x() += (1.0 - fc) * g_vis;
+                *pixel.mut_y() += fc * g_vis;
             }
         }
-        pixel.x /= sample_count as f32;
-        pixel.y /= sample_count as f32;
+        *pixel.mut_x() /= sample_count as f32;
+        *pixel.mut_y() /= sample_count as f32;
         pixel
     }
 
@@ -111,18 +111,18 @@ impl CpuBaker {
 
     fn importance_sampling_ggx(xi: math::Vec2, normal: &math::Vec3, roughness: f32) -> math::Vec3 {
         let roughness = roughness.powi(2);
-        let phi = 2.0 * PI * xi.x;
-        let cos_theta = f32::sqrt((1.0 - xi.y) / (1.0 + (roughness.powi(2) - 1.0) * xi.y));
+        let phi = 2.0 * PI * xi.x();
+        let cos_theta = f32::sqrt((1.0 - xi.y()) / (1.0 + (roughness.powi(2) - 1.0) * xi.y()));
         let sin_theta = f32::sqrt(1.0 - cos_theta.powi(2));
         let h = vec3!(phi.cos() * sin_theta, phi.sin() * sin_theta, cos_theta);
-        let up = if normal.z.abs() < 0.999 {
+        let up = if normal.z().abs() < 0.999 {
             vec3!(0.0, 0.0, 1.0)
         } else {
             vec3!(1.0, 0.0, 0.0)
         };
         let tangent = up.cross(normal).normalize();
         let bitangent = normal.cross(&tangent);
-        let direction = tangent * h.x + bitangent * h.y + normal * h.z;
+        let direction = tangent * h.x() + bitangent * h.y() + normal * h.z();
         direction.normalize()
     }
 
@@ -148,7 +148,7 @@ impl CpuBaker {
             let offset = (y * width) as usize;
             for x in 0..width {
                 let pixel = &pixels[x as usize + offset];
-                let pixel = [pixel.x as u8, pixel.y as u8, pixel.z as u8];
+                let pixel = [pixel.x() as u8, pixel.y() as u8, pixel.z() as u8];
                 image.put_pixel(x, y, image::Rgb(pixel))
             }
         }
@@ -163,7 +163,7 @@ impl CpuBaker {
         Image {
             width,
             height,
-            data: pixels.iter().flat_map(|p| [p.x, p.y, p.z]).collect(),
+            data: pixels.iter().flatten().collect(),
         }
     }
 
@@ -218,11 +218,11 @@ impl CpuBaker {
         for i in 0..sample_count {
             let xi = Self::hammersley(i, sample_count);
             let h = Self::importance_sampling_ggx(xi, normal, roughness);
-            let l = &(&h * 2.0 * normal.dot(&h)) - normal;
+            let l = (&h * 2.0 * normal.dot(&h)) - normal;
             let l = l.normalize();
             let nl = normal.dot(&l).max(0.0);
             if nl > 0.0 {
-                specular = specular + (Self::sample(image, &l) * nl);
+                specular += Self::sample(image, &l) * nl;
                 total_weight += nl;
             }
         }
@@ -298,9 +298,9 @@ impl CpuBaker {
                 };
                 let direction = direction.to_cartesian();
                 let direction =
-                    (&right * direction.x) + (&up * direction.y) + (&normal * direction.z);
+                    (right * direction.x()) + (up * direction.y()) + (normal * direction.z());
                 let pixel = Self::sample(image, &direction);
-                irradiance = irradiance + (pixel * inclination.cos() * inclination.sin());
+                irradiance += pixel * inclination.cos() * inclination.sin();
                 sample_count += 1;
                 inclination += sample_delta;
             }
@@ -317,7 +317,7 @@ impl CpuBaker {
             image::DynamicImage::ImageRgb32F(image) => image,
             _ => panic!("non-hdr image supplied"),
         };
-        let pixel = image.get_pixel(texcoord.x as u32, texcoord.y as u32).0;
+        let pixel = image.get_pixel(texcoord.x() as u32, texcoord.y() as u32).0;
         vec3!(pixel[0], pixel[1], pixel[2])
     }
 }

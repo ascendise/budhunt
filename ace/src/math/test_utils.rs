@@ -18,24 +18,25 @@ macro_rules! assert_float_eq {
         }
     }};
     (Vec4 $left:expr, $right:expr) => {{
-        if !($crate::float_is_near!($left.x, $right.x)
-            && $crate::float_is_near!($left.y, $right.y)
-            && $crate::float_is_near!($left.z, $right.z)
-            && $crate::float_is_near!($left.w, $right.w))
+        if !($crate::float_is_near!($left.x(), $right.x())
+            && $crate::float_is_near!($left.y(), $right.y())
+            && $crate::float_is_near!($left.z(), $right.z())
+            && $crate::float_is_near!($left.w(), $right.w()))
         {
             assert_eq!($left, $right);
         }
     }};
     (Vec3 $left:expr, $right:expr) => {{
-        if !($crate::float_is_near!($left.x, $right.x)
-            && $crate::float_is_near!($left.y, $right.y)
-            && $crate::float_is_near!($left.z, $right.z))
+        if !($crate::float_is_near!($left.x(), $right.x())
+            && $crate::float_is_near!($left.y(), $right.y())
+            && $crate::float_is_near!($left.z(), $right.z()))
         {
             assert_eq!($left, $right);
         }
     }};
     (Vec2 $left:expr, $right:expr) => {{
-        if !($crate::float_is_near!($left.x, $right.x) && $crate::float_is_near!($left.y, $right.y))
+        if !($crate::float_is_near!($left.x(), $right.x())
+            && $crate::float_is_near!($left.y(), $right.y()))
         {
             assert_eq!($left, $right);
         }

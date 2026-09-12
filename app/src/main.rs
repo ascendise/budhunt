@@ -145,12 +145,12 @@ fn spawn_point_lights(entities: &mut ace::Entities) {
             &entity[ace::Components::POSITION],
             ace::Components::Position
         );
-        let position = position + &vec3!(0.0, 0.001, 0.0);
+        let position = position + vec3!(0.0, 0.001, 0.0);
         vec![ace::Components::Position(position)]
     });
     let move_script = Box::new(move_script);
     for position in point_lights {
-        let light = create_point_light(position.clone());
+        let light = create_point_light(position);
         let light = gfx::Light::Point(light);
         let light = ace::Components::Light(light);
         let position = ace::Components::Position(position);
@@ -178,8 +178,8 @@ fn spawn_floor(
         .iter_mut()
         .map(|v| {
             let mut new = v.clone();
-            new.position = new.position * 1024.0;
-            new.position.y -= 10.0;
+            new.position *= 1024.0;
+            *new.position.mut_y() -= 10.0;
             new
         })
         .collect();
@@ -202,11 +202,7 @@ fn spawn_player(
     let rifle_model = renderer.load_mesh(&rifle_mesh, pbr_shader);
     let mut player_script = PlayerScript::new(clock);
     player_script.set_bullet_shader(bullet_shader);
-    let point = metainfo
-        .points
-        .first()
-        .expect("muzzle point data missing")
-        .clone();
+    let point = *metainfo.points.first().expect("muzzle point data missing");
     entities.create_entity(vec![
         ace::Components::Position(vec3!(0.0, 0.0, 5.0)),
         //ace::Components::Position(vec3!(0.0, 0.0, -20.0)),
@@ -230,7 +226,7 @@ fn setup_world(
     let projection = gfx::Projection {
         width: width as f32,
         height: height as f32,
-        fov: 75.0,
+        fov: math::radians(75.0),
         near: 0.1,
         far: 1000.0,
     };

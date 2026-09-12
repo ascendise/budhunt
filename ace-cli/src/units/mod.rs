@@ -58,8 +58,8 @@ impl Spheric {
 
     pub fn from_cartesian(cartesian: &Cartesian) -> Self {
         let radius = cartesian.magnitude();
-        let azimuth = f32::atan2(cartesian.y, cartesian.x);
-        let inclination = (cartesian.z / radius).acos();
+        let azimuth = f32::atan2(cartesian.y(), cartesian.x());
+        let inclination = (cartesian.z() / radius).acos();
         Self {
             azimuth,
             inclination,

@@ -91,7 +91,7 @@ impl System for CollisionSystem {
         for collider in &colliders {
             let mut collision_entity = CollisionEntity {
                 collider: component!(&collider[Components::COLLIDER], Components::Collider).clone(),
-                position: component!(&collider[Components::POSITION], Components::Position).clone(),
+                position: *component!(&collider[Components::POSITION], Components::Position),
                 physics: maybe_component!(
                     &rigid_bodies[collider.id()],
                     Some(Components::RigidBody)
@@ -102,8 +102,7 @@ impl System for CollisionSystem {
                 let mut other_collision_entity = CollisionEntity {
                     collider: component!(&other[Components::COLLIDER], Components::Collider)
                         .clone(),
-                    position: component!(&other[Components::POSITION], Components::Position)
-                        .clone(),
+                    position: *component!(&other[Components::POSITION], Components::Position),
                     physics: maybe_component!(
                         &rigid_bodies[other.id()],
                         Some(Components::RigidBody)
@@ -141,15 +140,15 @@ impl CollisionSystem {
         const DEPTH: usize = 32;
         let current_position = &collider.position;
         let mut displacement = collider.physics.clone()?.velocity?;
-        collider.position = current_position - &displacement;
+        collider.position = current_position - displacement;
         for _ in 0..DEPTH {
-            displacement = &displacement / 2.0;
-            collider.position = &collider.position + &displacement;
+            displacement /= 2.0;
+            collider.position += displacement;
             if collider.intersects(obstacle) {
-                collider.position = &collider.position - &displacement;
+                collider.position -= displacement;
             }
         }
-        Some(collider.position.clone())
+        Some(collider.position)
     }
 }
 struct CollisionEntity {
@@ -175,7 +174,7 @@ impl Collider {
     }
 
     pub fn line(position: math::Vec3, direction: &math::Vec3) -> Self {
-        let end = &position + direction;
+        let end = position + direction;
         Self {
             vertices: vec![position, end],
         }
@@ -188,7 +187,7 @@ impl Collider {
     pub fn intersects(&self, other: &Collider) -> bool {
         let initial_dir = vec3!(1.0, 0.0, 0.0);
         let initial_point = self.support(other, &initial_dir);
-        let mut simplex = vec![initial_point.clone()];
+        let mut simplex = vec![initial_point];
         let mut direction = -initial_point;
         loop {
             let point = self.support(other, &direction);

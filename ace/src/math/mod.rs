@@ -8,6 +8,7 @@ mod vector;
 use std::f32::consts::PI;
 
 pub use matrix::Matrix4;
+pub use vector::Vec;
 pub use vector::Vec2;
 pub use vector::Vec3;
 pub use vector::Vec4;
@@ -68,9 +69,9 @@ fn look_at_rotation(direction: &Vec3, up: &Vec3) -> Matrix4 {
     let right = up.cross(direction).normalize();
     let up = direction.cross(&right);
     let rotation: Matrix4 = [
-        [right.x, right.y, right.z, 0.0],
-        [up.x, up.y, up.z, 0.0],
-        [direction.x, direction.y, direction.z, 0.0],
+        [right.x(), right.y(), right.z(), 0.0],
+        [up.x(), up.y(), up.z(), 0.0],
+        [direction.x(), direction.y(), direction.z(), 0.0],
         [0.0, 0.0, 0.0, 1.0],
     ]
     .into();
@@ -79,9 +80,9 @@ fn look_at_rotation(direction: &Vec3, up: &Vec3) -> Matrix4 {
 
 fn look_at_translation(eye: &Vec3) -> Matrix4 {
     let mut translation = Matrix4::new(1.0);
-    translation[0][3] = -eye.x;
-    translation[1][3] = -eye.y;
-    translation[2][3] = -eye.z;
+    translation[0][3] = -eye.x();
+    translation[1][3] = -eye.y();
+    translation[2][3] = -eye.z();
     translation
 }
 
@@ -92,17 +93,13 @@ pub fn rotation_fpv(direction: &Vec3) -> Matrix4 {
     look_at_rotation(&-direction, &up).inverse()
 }
 
-pub fn radians(degree: f32) -> f32 {
+pub const fn radians(degree: f32) -> f32 {
     PI / 180.0 * degree
 }
 
 /// Creates a rotation matrix for transforming a model around the three axises x,y,z
 pub fn rotation(radians: &Vec3) -> Matrix4 {
-    let mut rotation = Matrix4::new(1.0);
-    rotation = rotation * rotation_x(radians.x);
-    rotation = rotation * rotation_y(radians.y);
-    rotation = rotation * rotation_z(radians.z);
-    rotation
+    Matrix4::new(1.0) * rotation_x(radians.x()) * rotation_y(radians.y()) * rotation_z(radians.z())
 }
 
 fn rotation_x(radians: f32) -> Matrix4 {

@@ -1,7 +1,7 @@
 use ace::{
     component, event,
     math::{self, rotation_fpv},
-    maybe_component, vec2, vec3,
+    maybe_component, vec2, vec3, vec4,
 };
 
 #[cfg(test)]
@@ -26,25 +26,34 @@ impl ace::Script for PlayerScript {
             .unwrap_or(vec2!(0.0));
         let (move_direction, camera_direction) = self.turn_camera(&cursor_offset);
         let rigid_body = self.set_player_velocity(player, &inputs, move_direction);
-        let mut model = component!(&player[ace::Components::MODEL], ace::Components::Model).clone();
-        model.transform.rotation = math::rotation_fpv(&camera_direction);
+        let mut transform = component!(
+            &player[ace::Components::TRANSFORM],
+            ace::Components::Transform
+        )
+        .clone();
+        transform.rotate_fpv(&camera_direction);
         updates.set_batch(
             player.id(),
             vec![
-                ace::Components::Direction(camera_direction),
                 ace::Components::RigidBody(rigid_body),
-                ace::Components::Model(model.clone()),
+                ace::Components::Transform(transform),
             ],
         );
-        let position = *component!(
-            &player[ace::Components::POSITION],
-            ace::Components::Position
+        let transform = component!(
+            &player[ace::Components::TRANSFORM],
+            ace::Components::Transform
         );
         let point = component!(
             &player.get(ace::Components::POINT),
-            Some(ace::Components::Point) or &position
+            Some(ace::Components::Point) or &transform.position
         );
-        self.handle_shooting(&inputs, updates, &position, &camera_direction, point);
+        self.handle_shooting(
+            &inputs,
+            updates,
+            &transform.position,
+            &camera_direction,
+            point,
+        );
     }
 }
 impl PlayerScript {
@@ -127,30 +136,21 @@ impl PlayerScript {
         for input in inputs {
             if let ace::Input::Shoot = input {
                 let rotation = rotation_fpv(direction);
-                let muzzle_position = position + rotate_vec3(muzzle_position, &rotation);
-                let bullet = ace::gfx::Line {
-                    transform: ace::gfx::Transform {
-                        position: muzzle_position,
-                        rotation: rotation.clone(),
-                    },
-                    shader: self.bullet_shader,
+                let muzzle_position = &rotation * vec4!(muzzle_position, 1.0);
+                let muzzle_position = position + muzzle_position.into_vec();
+                let transform = ace::x3d::Transform {
+                    position: muzzle_position.into_vec(),
+                    rotation: rotation.clone(),
                 };
-                let direction = rotate_vec3(&vec3!(0.0, 0.0, -100.0), &rotation);
-                let end = muzzle_position + direction;
-                let vertices = vec![muzzle_position, end];
+                let vertices = vec![vec3!(0.0), vec3!(0.0, 0.0, -100.0)];
                 updates.spawn(vec![
-                    ace::Components::Line(bullet),
-                    ace::Components::Position(vec3!(0.0)),
+                    ace::Components::Line(self.bullet_shader),
+                    ace::Components::Transform(transform),
                     ace::Components::Collider(ace::physics::Collider::new(vertices)),
                 ]);
             }
         }
     }
-}
-
-fn rotate_vec3(muzzle_position: &math::Vec3, rotation: &math::Matrix4) -> math::Vec3 {
-    let muzzle_position = rotation * muzzle_position.into_vec_with(1.0);
-    muzzle_position.into_vec()
 }
 
 pub struct BulletSystem;
@@ -166,15 +166,13 @@ impl ace::System for BulletSystem {
                     if target.get(ace::Components::LINE).is_some() {
                         continue;
                     }
-                    let position = maybe_component!(
-                        target.get(ace::Components::POSITION),
-                        Some(ace::Components::Position)
+                    let transform = maybe_component!(
+                        target.get(ace::Components::TRANSFORM),
+                        Some(ace::Components::Transform)
                     );
-                    if position.is_some() {
-                        updates.set(
-                            target.id(),
-                            ace::Components::Position(vec3!((target.id() + 1) as f32, 10.0, 0.0)),
-                        );
+                    if transform.is_some() {
+                        let new_position = vec3!((target.id() + 1) as f32, 10.0, 0.0);
+                        updates.set(target.id(), ace::x3d::Transform::new(new_position).into());
                     }
                 }
             }

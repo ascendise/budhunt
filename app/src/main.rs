@@ -125,7 +125,7 @@ fn spawn_targets(
     let collider =
         ace::physics::Collider::new(metainfo.collider.expect("no collider found for Target.glb"));
     for target in targets {
-        let position = ace::Components::Position(target);
+        let position = ace::Components::Transform(ace::x3d::Transform::new(target));
         let collider = ace::Components::Collider(collider.clone());
         let components = vec![ace::Components::Model(model.clone()), position, collider];
         entities.create_entity(components);
@@ -141,19 +141,20 @@ fn spawn_point_lights(entities: &mut ace::Entities) {
         vec3!(0.0, 0.0, -3.0),
     ];
     let move_script = script!(|entity: &ace::Entity<'_, ace::Components>, _| {
-        let position = component!(
-            &entity[ace::Components::POSITION],
-            ace::Components::Position
-        );
-        let position = position + vec3!(0.0, 0.001, 0.0);
-        vec![ace::Components::Position(position)]
+        let mut transform = component!(
+            &entity[ace::Components::TRANSFORM],
+            ace::Components::Transform
+        )
+        .clone();
+        transform.position += vec3!(0.0, 0.001, 0.0);
+        vec![ace::Components::Transform(transform)]
     });
     let move_script = Box::new(move_script);
     for position in point_lights {
         let light = create_point_light(position);
         let light = gfx::Light::Point(light);
         let light = ace::Components::Light(light);
-        let position = ace::Components::Position(position);
+        let position = ace::Components::Transform(ace::x3d::Transform::new(position));
         let script = ace::Components::Scripts(vec![move_script.clone()]);
         entities.create_entity(vec![light, position, script]);
     }
@@ -186,7 +187,7 @@ fn spawn_floor(
     let plane_model = renderer.load_mesh(&plane_mesh, shader_program);
     entities.create_entity(vec![
         ace::Components::Model(plane_model),
-        ace::Components::Position(Default::default()),
+        ace::Components::Transform(Default::default()),
     ]);
 }
 
@@ -204,9 +205,8 @@ fn spawn_player(
     player_script.set_bullet_shader(bullet_shader);
     let point = *metainfo.points.first().expect("muzzle point data missing");
     entities.create_entity(vec![
-        ace::Components::Position(vec3!(0.0, 0.0, 5.0)),
+        ace::Components::Transform(ace::x3d::Transform::new(vec3!(0.0, 0.0, 5.0))),
         //ace::Components::Position(vec3!(0.0, 0.0, -20.0)),
-        ace::Components::Direction(vec3!(0.0, 0.0, 1.0)),
         ace::Components::Point(point),
         ace::Components::Scripts(vec![Box::new(player_script)]),
         ace::Components::Player,

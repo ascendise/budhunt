@@ -15,19 +15,23 @@ fn setup(spy_renderer: &SpyRenderer) -> RenderSystem {
     RenderSystem::new(renderer, projection)
 }
 
+fn setup_camera(entities: &mut Entities) {
+    setup_camera_at(entities, vec3!(0.0));
+}
+
+fn setup_camera_at(entities: &mut Entities, position: math::Vec3) {
+    entities.create_entity(vec![Components::Player, Transform::new(position).into()]);
+}
+
 #[test]
-pub fn render_should_pass_objects_to_renderer() {
+pub fn render_should_pass_objects_to_renderer_with_default_transform() {
     // Arrange
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
     let mut entities = Entities::empty();
-    entities.create_entity(vec![
-        Components::Player,
-        Components::Position(Default::default()),
-        Components::Direction(Default::default()),
-    ]); // Camera
-    entities.create_entity(vec![Components::Position(Default::default())]); // Some random filler
-    let expected_model = ModelNode {
+    setup_camera(&mut entities);
+    entities.create_entity(vec![Components::Transform(Default::default())]); // Some random filler
+    let expected_node = ModelNode {
         vao: 123,
         shader: 123,
         material: Texture {
@@ -37,13 +41,10 @@ pub fn render_should_pass_objects_to_renderer() {
         vertices: 3,
         indices: 3,
     };
-    let expected_model = Model {
-        nodes: vec![expected_model],
-        transform: Default::default(),
-    };
-    entities.create_entity(vec![Components::Model(expected_model.clone())]);
+    let expected_nodes = vec![expected_node];
+    entities.create_entity(vec![Components::Model(expected_nodes.clone())]);
     let expected_light = PointLight {
-        model: Some(expected_model.clone()),
+        model: Some(expected_nodes.clone()),
         color: vec3!(1.0),
         position: vec3!(1.0),
     };
@@ -53,21 +54,21 @@ pub fn render_should_pass_objects_to_renderer() {
     sut.run(&mut entities, &Events::empty());
     // Assert
     let frame = spy.frame(0);
+    let expected_model = Model {
+        nodes: expected_nodes,
+        transform: Default::default(),
+    };
     assert_eq!(vec![expected_model], frame.models);
     assert_eq!(vec![expected_light], frame.lights);
 }
 
 #[test]
-pub fn render_should_transform_models_with_position() {
+pub fn render_should_transform_models_with_specific_transform() {
     // Arrange
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
     let mut entities = Entities::empty();
-    entities.create_entity(vec![
-        Components::Player,
-        Components::Position(Default::default()),
-        Components::Direction(Default::default()),
-    ]); // Camera
+    setup_camera(&mut entities);
     let model = ModelNode {
         vao: 123,
         shader: 123,
@@ -78,23 +79,24 @@ pub fn render_should_transform_models_with_position() {
         vertices: 3,
         indices: 3,
     };
-    let model = Model {
-        nodes: vec![model],
-        transform: Transform {
-            position: vec3!(1.0),
-            rotation: math::Matrix4::new(1.0),
-        },
+    let expected_transform = Transform {
+        position: vec3!(5.0),
+        rotation: math::rotation(&vec3!(1.0)),
     };
+    let model = vec![model];
     entities.create_entity(vec![
-        Components::Model(model.clone()),
-        Components::Position(vec3!(5.0)),
+        Components::Model(model),
+        Components::Transform(expected_transform.clone()),
     ]);
     // Act
     sut.run(&mut entities, &Events::empty());
     // Assert
     let frame = spy.frame(0);
     let model = frame.models.first().expect("Model was not rendered!");
-    assert_float_eq!(Vec3 vec3!(6.0), model.transform.position);
+    assert_eq!(
+        expected_transform, model.transform,
+        "did not pass correct transforms!"
+    );
 }
 
 #[test_case(Input::Scroll(-10.0), math::radians(55.0))]
@@ -104,11 +106,7 @@ pub fn render_should_change_fov_on_scroll(scroll: Input, expected_fov: f32) {
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
     let mut entities = Entities::empty();
-    entities.create_entity(vec![
-        Components::Player,
-        Components::Position(Default::default()),
-        Components::Direction(Default::default()),
-    ]);
+    setup_camera(&mut entities);
     let events = Events::empty();
     events.push_event(Event::Input(scroll));
     // Act
@@ -125,11 +123,7 @@ pub fn render_should_clamp_fov_range(scroll: Input, expected_fov: f32) {
     let spy = SpyRenderer::new();
     let sut = setup(&spy);
     let mut entities = Entities::empty();
-    entities.create_entity(vec![
-        Components::Player,
-        Components::Position(Default::default()),
-        Components::Direction(Default::default()),
-    ]);
+    setup_camera(&mut entities);
     // Act
     let mut inputs: Vec<Event> = (0..100).map(|_| Event::Input(scroll.clone())).collect();
     let events = Events::empty();

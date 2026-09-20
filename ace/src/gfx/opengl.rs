@@ -92,16 +92,11 @@ impl OpenGlRenderer {
         }
     }
 
-    pub fn load_mesh(&mut self, mesh: &Mesh, shader: Shader) -> Model {
-        let nodes = mesh
-            .nodes
+    pub fn load_mesh(&mut self, mesh: &Mesh, shader: Shader) -> ModelNodes {
+        mesh.nodes
             .iter()
             .map(|n| self.load_mesh_node(n, shader))
-            .collect();
-        Model {
-            nodes,
-            transform: Transform::default(),
-        }
+            .collect()
     }
 
     fn load_mesh_node(&mut self, node: &MeshNode, shader: Shader) -> ModelNode {
@@ -503,11 +498,6 @@ impl<'a> OpenGlShader for ModelShader<'a> {
     }
 }
 impl<'a> ModelShader<'a> {
-    fn create_model_matrix(transform: &Transform) -> math::Matrix4 {
-        let translation = math::Matrix4::translation(&transform.position);
-        &translation * &transform.rotation
-    }
-
     fn create_normal_matrix(model: &math::Matrix4, view: &math::Matrix4) -> math::Matrix4 {
         (model * view).inverse().transpose()
     }
@@ -515,7 +505,7 @@ impl<'a> ModelShader<'a> {
     fn set_model_uniforms(&self, model: &ModelNode, transform: &Transform) {
         gl_matrix_uniform(model.shader, self.projection, "uProjection");
         gl_matrix_uniform(model.shader, self.view, "uView");
-        let model_matrix = Self::create_model_matrix(transform);
+        let model_matrix = transform.model_matrix();
         gl_matrix_uniform(model.shader, &model_matrix, "uModel");
         let normal_matrix = Self::create_normal_matrix(&model_matrix, self.view);
         gl_matrix_uniform(model.shader, &normal_matrix, "uNormal");
@@ -553,7 +543,7 @@ impl<'a> OpenGlShader for LineShader<'a> {
                     * &line.transform.rotation;
                 gl_matrix_uniform(line.shader, &model_matrix, "uModel");
                 gl_vec3_uniform(line.shader, &vec3!(1.0, 0.0, 0.0), "uColor");
-                gl::LineWidth(8.0);
+                gl::LineWidth(2.0);
                 gl::DrawArrays(gl::LINES, 0, Self::LINE_VERTICES_LEN);
             }
             gl::Disable(gl::LINE_SMOOTH);

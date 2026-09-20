@@ -31,7 +31,7 @@ pub fn run_should_run_script_on_all_entities() {
     let mut entities = Entities::empty();
     entities.create_entity(vec![Components::Scripts(vec![spy_script.clone()])]);
     entities.create_entity(vec![Components::Scripts(vec![spy_script.clone()])]);
-    entities.create_entity(vec![Components::Position(Default::default())]); // Filler
+    entities.create_entity(vec![Components::Transform(Default::default())]); // Filler
     entities.create_entity(vec![Components::Scripts(vec![spy_script.clone()])]);
     // Act
     sut.run(&mut entities, &Events::empty());
@@ -52,10 +52,9 @@ pub fn run_should_update_entity_with_returned_entity() {
     sut.run(&mut entities, &Events::empty());
     // Assert
     let entity = entities.get_entity(0);
-    let expected_position = vec3!(10.0);
     assert_eq!(
-        &expected_position,
-        component!(&entity[Components::POSITION], Components::Position),
+        vec3!(10.0),
+        component!(&entity[Components::TRANSFORM], Components::Transform).position,
         "New component was not added!"
     );
 }
@@ -66,19 +65,18 @@ pub fn run_should_update_existing_component_with_returned_entity() {
     let sut = setup();
     let update_position_script = Box::new(UpdatePositionScript);
     let mut entities = Entities::empty();
-    let old_position = Components::Position(vec3!(f32::MAX));
+    let old_position = Transform::new(vec3!(f32::MAX));
     entities.create_entity(vec![
         Components::Scripts(vec![update_position_script.clone()]),
-        old_position,
+        old_position.into(),
     ]);
     // Act
     sut.run(&mut entities, &Events::empty());
     // Assert
     let entity = entities.get_entity(0);
-    let expected_position = vec3!(10.0);
     assert_eq!(
-        &expected_position,
-        component!(&entity[Components::POSITION], Components::Position),
+        vec3!(10.0),
+        component!(&entity[Components::TRANSFORM], Components::Transform).position,
         "Existing component was not updated!"
     );
 }
@@ -87,7 +85,7 @@ pub fn run_should_update_existing_component_with_returned_entity() {
 pub struct UpdatePositionScript;
 impl Script for UpdatePositionScript {
     fn run(&self, entity: &Entity<'_, Components>, _: &Events, updates: &mut Update<Components>) {
-        updates.set(entity.id(), Components::Position(vec3!(10.0)));
+        updates.set(entity.id(), Transform::new(vec3!(10.0)).into());
     }
 }
 
@@ -105,8 +103,8 @@ pub fn run_should_commit_new_entity_spawned_by_script() {
     assert_eq!(2, entities.count(), "new entity was not commited!");
     let new_entity = entities.get_entity(1);
     assert_eq!(
-        &vec3!(10.0),
-        component!(&new_entity[Components::POSITION], Components::Position),
+        vec3!(10.0),
+        component!(&new_entity[Components::TRANSFORM], Components::Transform).position,
         "Existing component was not updated!"
     );
 }
@@ -115,6 +113,6 @@ pub fn run_should_commit_new_entity_spawned_by_script() {
 pub struct SpawnPositionScript(math::Vec3);
 impl Script for SpawnPositionScript {
     fn run(&self, _: &Entity<'_, Components>, _: &Events, updates: &mut Update<Components>) {
-        updates.spawn(vec![Components::Position(self.0)]);
+        updates.spawn(vec![Transform::new(self.0).into()]);
     }
 }

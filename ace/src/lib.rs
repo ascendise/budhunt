@@ -4,6 +4,7 @@ use std::ops::{Index, IndexMut};
 use indexmap::{IndexMap, map::Entry};
 
 pub mod events;
+pub mod x3d;
 pub use events::Events;
 pub mod gfx;
 pub mod glfw_input;
@@ -12,7 +13,7 @@ pub mod physics;
 pub mod scripts;
 pub use scripts::Script;
 
-use crate::physics::CompoundCollisionEvent;
+use crate::{gfx::ModelNodes, physics::CompoundCollisionEvent, x3d::Transform};
 
 #[cfg(test)]
 mod tests;
@@ -128,15 +129,17 @@ impl<T: Component, const E: usize> Entities<T, E> {
     /// Creates an empty [Update] object for staging updated components
     /// # Usage
     /// ```
-    /// use ace::{Components, Entities, component, vec3};
+    /// use ace::{Components, Entities, component, vec3, x3d::Transform};
     /// let mut entities = Entities::empty();
-    /// let id = entities.create_entity(vec![Components::Position(vec3!(0.0))]);
+    /// let id = entities.create_entity(vec![Components::Transform(Default::default())]);
     /// let mut updates = entities.update();
-    /// updates.set(id, Components::Position(vec3!(1.0, 2.0, 3.0)));
-    /// entities.commit(updates); // Failing to commit causes panic
+    /// let transform = Transform::new(vec3!(1.0, 2.0, 3.0));
+    /// updates.set(id, Components::Transform(transform.clone()));
+    /// entities.commit(updates);
     /// assert_eq!(
-    ///     &vec3!(1.0, 2.0, 3.0),
-    ///     component!(&entities[Components::POSITION][id], Some(Components::Position)));
+    ///     &transform,
+    ///     component!(&entities[Components::TRANSFORM][id], Some(Components::Transform))
+    /// );
     /// ```
     pub fn update(&self) -> Update<T> {
         Update::new(self.entities_count)
@@ -272,16 +275,20 @@ impl<T: Component> Update<T> {
 
 #[derive(Component)]
 pub enum Components {
-    Position(math::Vec3),
-    Direction(math::Vec3),
     Point(math::Vec3),
-    Model(gfx::Model),
+    Model(ModelNodes),
+    Transform(Transform),
     Light(gfx::Light),
-    Line(gfx::Line),
+    Line(gfx::Shader),
     Scripts(Vec<Box<dyn scripts::Script>>),
     Player,
     Collider(physics::Collider),
     RigidBody(physics::RigidBody),
+}
+impl From<Transform> for Components {
+    fn from(value: Transform) -> Self {
+        Self::Transform(value)
+    }
 }
 
 pub trait Component {

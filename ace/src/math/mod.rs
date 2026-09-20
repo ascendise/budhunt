@@ -32,6 +32,9 @@ macro_rules! vec3 {
 #[macro_export]
 macro_rules! vec4 {
     ($x:expr, $y:expr, $z:expr, $w:expr) => {{ $crate::math::Vec4::new($x, $y, $z, $w) }};
+    ($vec3:expr, $w:expr) => {
+        $crate::math::Vec4::new($vec3.x(), $vec3.y(), $vec3.z(), $w)
+    };
     ($x:expr) => {
         $crate::math::Vec4::new($x, $x, $x, $x)
     };
@@ -127,16 +130,6 @@ fn rotation_z(radians: f32) -> Matrix4 {
         [radians.cos(), radians.sin(), 0.0, 0.0],
         [-radians.sin(), radians.cos(), 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
-    .into()
-}
-
-pub fn translate(x: f32, y: f32, z: f32) -> Matrix4 {
-    [
-        [1.0, 0.0, 0.0, x],
-        [0.0, 1.0, 0.0, y],
-        [0.0, 0.0, 1.0, z],
         [0.0, 0.0, 0.0, 1.0],
     ]
     .into()

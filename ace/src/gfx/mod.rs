@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
-use crate::*;
+use crate::{x3d::Transform, *};
 pub mod opengl;
 
 #[cfg(test)]
@@ -20,19 +20,19 @@ impl System for RenderSystem {
         let models: Vec<Renderable> = entities
             .get_entities(Components::MODEL)
             .iter()
-            .map(|m| Renderable::Model(Self::get_model(m, entities)))
+            .map(|m| Renderable::Model(Self::get_model(m)))
             .collect();
         let mut lights: Vec<Renderable> = entities
             .get_entities(Components::LIGHT)
             .iter()
-            .map(|l| Renderable::Light(Self::get_light(l, entities)))
+            .map(|l| Renderable::Light(Self::get_light(l)))
             .collect();
         let mut renderables = models;
         renderables.append(&mut lights);
         let mut lines: Vec<Renderable> = entities
             .get_entities(Components::LINE)
             .iter()
-            .map(|l| Renderable::Line(Self::get_line(l, entities)))
+            .map(|l| Renderable::Line(Self::get_line(l)))
             .collect();
         renderables.append(&mut lines);
         self.renderer.render(&projection, &camera, &renderables);
@@ -50,12 +50,13 @@ impl RenderSystem {
     }
 
     fn find_camera(entities: &mut Entities) -> Camera {
-        let entities = entities
-            .get_entities(Components::PLAYER | Components::POSITION | Components::DIRECTION);
+        let entities = entities.get_entities(Components::PLAYER | Components::TRANSFORM);
         let entity = entities.first().expect("Player not found!");
+        let transform = component!(&entity[Components::TRANSFORM], Components::Transform);
+        let direction = transform.direction();
         gfx::Camera {
-            position: *component!(&entity[Components::POSITION], Components::Position),
-            direction: *component!(&entity[Components::DIRECTION], Components::Direction),
+            position: transform.position,
+            direction,
         }
     }
 
@@ -68,34 +69,35 @@ impl RenderSystem {
         }
     }
 
-    fn get_model(model: &Entity<'_, Components>, entities: &Entities) -> Model {
-        let position = component!(
-            &entities[Components::POSITION][model.id()],
-            Some(Components::Position) or &Default::default()
-        );
-        let mut model = component!(&model[Components::MODEL], Components::Model).clone();
-        model.transform.position += position;
-        model
+    fn get_model(model: &Entity<'_, Components>) -> Model {
+        let transform = component!(model.get(Components::TRANSFORM), Some(Components::Transform) or &Default::default());
+        let nodes = component!(&model[Components::MODEL], Components::Model).clone();
+        Model {
+            nodes,
+            transform: transform.clone(),
+        }
     }
 
-    fn get_light(light: &Entity<'_, Components>, entities: &Entities) -> Light {
-        let position = component!(
-            &entities[Components::POSITION][light.id()],
-            Some(Components::Position) or &Default::default()
+    fn get_light(light: &Entity<'_, Components>) -> Light {
+        let transform = component!(
+            light.get(Components::TRANSFORM),
+            Some(Components::Transform) or &Default::default()
         );
         let mut light = component!(&light[Components::LIGHT], Components::Light).clone();
-        light.transform(position);
+        light.transform(&transform.position);
         light
     }
 
-    fn get_line(line: &Entity<'_, Components>, entities: &Entities) -> Line {
-        let position = component!(
-            &entities[Components::POSITION][line.id()],
-            Some(Components::Position) or &Default::default()
+    fn get_line(line: &Entity<'_, Components>) -> Line {
+        let transform = component!(
+            line.get(Components::TRANSFORM),
+            Some(Components::Transform) or &Default::default()
         );
-        let mut line = component!(&line[Components::LINE], Components::Line).clone();
-        line.transform.position += position;
-        line
+        let shader = *component!(&line[Components::LINE], Components::Line);
+        Line {
+            transform: transform.clone(),
+            shader,
+        }
     }
 }
 pub trait Renderer {
@@ -140,11 +142,10 @@ pub enum Renderable {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Model {
-    pub nodes: Vec<ModelNode>,
+    pub nodes: ModelNodes,
     pub transform: Transform,
 }
-pub type VertexArray = u32;
-pub type Shader = u32;
+pub type ModelNodes = Vec<ModelNode>;
 #[derive(Debug, PartialEq, Clone)]
 pub struct ModelNode {
     pub vao: VertexArray,
@@ -153,29 +154,14 @@ pub struct ModelNode {
     pub vertices: i32,
     pub indices: i32,
 }
-
-pub type Tex = i32;
+pub type VertexArray = u32;
+pub type Shader = u32;
 #[derive(PartialEq, Debug, Clone)]
 pub struct Texture {
     albedo: Tex,
     metallic_roughness_ao: Tex,
 }
-
-#[derive(PartialEq, Debug, Clone)]
-pub struct Transform {
-    pub position: math::Vec3,
-    /// radians
-    pub rotation: math::Matrix4, //TODO: Turn into enum Rotation{Eular(Angles), FirstPerson(CameraDirection)}?
-}
-
-impl Default for Transform {
-    fn default() -> Self {
-        Self {
-            position: Default::default(),
-            rotation: math::Matrix4::new(1.0),
-        }
-    }
-}
+pub type Tex = i32;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Light {
@@ -198,7 +184,7 @@ pub struct Material {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct PointLight {
-    pub model: Option<Model>,
+    pub model: Option<ModelNodes>,
     pub color: math::Vec3,
     pub position: math::Vec3,
 }

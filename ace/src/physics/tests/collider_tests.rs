@@ -1,12 +1,17 @@
 use std::vec;
 
 use crate::{
+    math,
     physics::{
         Collider,
         tests::{cube, cube_at},
     },
     vec3,
 };
+
+pub fn line(start: math::Vec3, direction: &math::Vec3) -> Collider {
+    Collider::new(vec![start, start + direction])
+}
 
 #[test]
 pub fn intersects_should_return_true_when_two_points_collide() {
@@ -36,8 +41,8 @@ pub fn intersects_should_return_false_when_two_points_do_not_collide() {
 #[test]
 pub fn intersects_should_return_true_when_two_lines_collide() {
     // Arrange
-    let line1 = Collider::line(vec3!(0.0, -0.5, 0.0), &vec3!(0.0, 1.0, 0.0));
-    let line2 = Collider::line(vec3!(-0.5, 0.0, 0.0), &vec3!(0.5, 0.0, 0.0));
+    let line1 = line(vec3!(0.0, -0.5, 0.0), &vec3!(0.0, 1.0, 0.0));
+    let line2 = line(vec3!(-0.5, 0.0, 0.0), &vec3!(0.5, 0.0, 0.0));
     // Act
     let intersects = line1.intersects(&line2);
     // Assert
@@ -50,8 +55,8 @@ pub fn intersects_should_return_true_when_two_lines_collide() {
 #[test]
 pub fn intersects_should_return_false_when_two_lines_do_not_collide() {
     // Arrange
-    let line1 = Collider::line(vec3!(0.0, -0.5, 0.0), &vec3!(0.0, 1.0, 0.0));
-    let line2 = Collider::line(vec3!(0.1, -0.5, 0.0), &vec3!(0.1, 1.0, 0.0));
+    let line1 = line(vec3!(0.0, -0.5, 0.0), &vec3!(0.0, 1.0, 0.0));
+    let line2 = line(vec3!(0.1, -0.5, 0.0), &vec3!(0.1, 1.0, 0.0));
     // Act
     let does_not_intersect = !line1.intersects(&line2);
     // Assert

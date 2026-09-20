@@ -2,7 +2,7 @@ use core::panic;
 
 use crate::{
     Component, Components, Entities, Entity, Event, Events, System, component, event, math,
-    maybe_component, vec3,
+    maybe_component, vec3, x3d,
 };
 
 #[cfg(test)]
@@ -14,7 +14,7 @@ pub struct PhysicsSystem {
 impl System for PhysicsSystem {
     fn run(&self, entities: &mut Entities, events: &Events) {
         let mut updates = entities.update();
-        for entity in entities.get_entities(Components::RIGIDBODY | Components::POSITION) {
+        for entity in entities.get_entities(Components::RIGIDBODY | Components::TRANSFORM) {
             Self::move_entity(entity, &mut updates);
         }
         entities.commit(updates);
@@ -31,9 +31,10 @@ impl PhysicsSystem {
     fn move_entity(entity: Entity<'_, Components>, updates: &mut crate::Update<Components>) {
         let rigid_body = component!(&entity[Components::RIGIDBODY], Components::RigidBody);
         if let Some(velocity) = &rigid_body.velocity {
-            let position = component!(&entity[Components::POSITION], Components::Position);
-            let new_position = position + velocity;
-            updates.set(entity.id(), Components::Position(new_position));
+            let mut transform =
+                component!(&entity[Components::TRANSFORM], Components::Transform).clone();
+            transform.translate(velocity);
+            updates.set(entity.id(), Components::Transform(transform));
         }
     }
 
@@ -50,7 +51,14 @@ impl PhysicsSystem {
             .flat_map(|e| e.collisions);
         for event in events {
             if let Some(collision_point) = event.collision_point {
-                updates.set(event.entity_id, Components::Position(collision_point));
+                let entity = entities.get_entity(event.entity_id);
+                let mut transform = component!(
+                    entity.get(Components::TRANSFORM),
+                    Some(Components::Transform)
+                )
+                .clone();
+                transform.position = collision_point;
+                updates.set(event.entity_id, Components::Transform(transform));
             }
         }
         entities.commit(updates);
@@ -86,12 +94,13 @@ impl RigidBody {
 pub struct CollisionSystem;
 impl System for CollisionSystem {
     fn run(&self, entities: &mut crate::Entities, events: &Events) {
-        let colliders = entities.get_entities(Components::COLLIDER | Components::POSITION);
+        let colliders = entities.get_entities(Components::COLLIDER | Components::TRANSFORM);
         let rigid_bodies = entities.get_bucket(Components::RIGIDBODY);
         for collider in &colliders {
             let mut collision_entity = CollisionEntity {
                 collider: component!(&collider[Components::COLLIDER], Components::Collider).clone(),
-                position: *component!(&collider[Components::POSITION], Components::Position),
+                transform: component!(&collider[Components::TRANSFORM], Components::Transform)
+                    .clone(),
                 physics: maybe_component!(
                     &rigid_bodies[collider.id()],
                     Some(Components::RigidBody)
@@ -102,7 +111,8 @@ impl System for CollisionSystem {
                 let mut other_collision_entity = CollisionEntity {
                     collider: component!(&other[Components::COLLIDER], Components::Collider)
                         .clone(),
-                    position: *component!(&other[Components::POSITION], Components::Position),
+                    transform: component!(&other[Components::TRANSFORM], Components::Transform)
+                        .clone(),
                     physics: maybe_component!(
                         &rigid_bodies[other.id()],
                         Some(Components::RigidBody)
@@ -138,28 +148,29 @@ impl CollisionSystem {
         obstacle: &CollisionEntity,
     ) -> Option<math::Vec3> {
         const DEPTH: usize = 32;
-        let current_position = &collider.position;
         let mut displacement = collider.physics.clone()?.velocity?;
-        collider.position = current_position - displacement;
+        collider.transform.translate(&-displacement);
         for _ in 0..DEPTH {
             displacement /= 2.0;
-            collider.position += displacement;
+            collider.transform.translate(&displacement);
             if collider.intersects(obstacle) {
-                collider.position -= displacement;
+                collider.transform.translate(&-displacement);
             }
         }
-        Some(collider.position)
+        Some(collider.transform.position)
     }
 }
 struct CollisionEntity {
     collider: Collider,
-    position: math::Vec3,
+    transform: x3d::Transform,
     physics: Option<RigidBody>,
 }
 impl CollisionEntity {
     pub fn intersects(&self, other: &CollisionEntity) -> bool {
-        let collider = self.collider.translate(&self.position);
-        let other = other.collider.translate(&other.position);
+        let collider = self.transform.apply(&self.collider.vertices);
+        let collider = Collider::new(collider);
+        let other = other.transform.apply(&other.collider.vertices);
+        let other = Collider::new(other);
         collider.intersects(&other)
     }
 }
@@ -173,17 +184,6 @@ impl Collider {
         Self { vertices }
     }
 
-    pub fn line(position: math::Vec3, direction: &math::Vec3) -> Self {
-        let end = position + direction;
-        Self {
-            vertices: vec![position, end],
-        }
-    }
-
-    fn translate(&self, position: &math::Vec3) -> Self {
-        let vertices: Vec<math::Vec3> = self.vertices.iter().map(|v| v + position).collect();
-        Collider { vertices }
-    }
     pub fn intersects(&self, other: &Collider) -> bool {
         let initial_dir = vec3!(1.0, 0.0, 0.0);
         let initial_point = self.support(other, &initial_dir);

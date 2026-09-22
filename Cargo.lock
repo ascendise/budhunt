@@ -36,6 +36,7 @@ dependencies = [
 name = "ace_proc_macros"
 version = "0.1.0"
 dependencies = [
+ "ace",
  "proc-macro2",
  "quote",
  "syn 2.0.119",

@@ -285,11 +285,6 @@ pub enum Components {
     Collider(physics::Collider),
     RigidBody(physics::RigidBody),
 }
-impl From<Transform> for Components {
-    fn from(value: Transform) -> Self {
-        Self::Transform(value)
-    }
-}
 
 pub trait Component {
     /// Returns the bitflag indicating the specific component type.

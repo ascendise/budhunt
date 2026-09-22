@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::{error::Error, fmt::Display, path::PathBuf, sync::Mutex};
 
 use crate::{x3d::Transform, *};
 pub mod opengl;
@@ -204,8 +204,8 @@ const POINT_NODE_PREFIX: &str = "POINT";
 ///
 /// NOTE: In Blender, make sure the MESH (green symbol) is called "COLLIDER/POINT",
 /// not just the OBJECT (orange symbol, parent of mesh).
-pub fn load_mesh_from_glb(gltf_path: &std::path::Path) -> (Mesh, MeshMeta) {
-    let (document, buffers, images) = gltf::import(gltf_path).unwrap();
+pub fn load_mesh_from_glb(gltf_path: &std::path::Path) -> Result<(Mesh, MeshMeta), LoadGlbError> {
+    let (document, buffers, images) = import_gltf(gltf_path)?;
     let mut collider = None;
     let mut points = vec![];
     let nodes: Vec<MeshNode> = document
@@ -240,7 +240,27 @@ pub fn load_mesh_from_glb(gltf_path: &std::path::Path) -> (Mesh, MeshMeta) {
     }
     let mesh = Mesh { nodes };
     let metainfo = MeshMeta { collider, points };
-    (mesh, metainfo)
+    Ok((mesh, metainfo))
+}
+
+fn import_gltf(
+    gltf_path: &std::path::Path,
+) -> Result<
+    (
+        gltf::Document,
+        Vec<gltf::buffer::Data>,
+        Vec<gltf::image::Data>,
+    ),
+    LoadGlbError,
+> {
+    match gltf::import(gltf_path) {
+        Ok(v) => Ok(v),
+        Err(e) => match e {
+            gltf::Error::Deserialize(_) => Err(LoadGlbError::InvalidFormat),
+            gltf::Error::Io(_) => Err(LoadGlbError::FileNotFound(gltf_path.into())),
+            _ => Err(LoadGlbError::Corrupted(e.to_string())),
+        },
+    }
 }
 
 fn load_collider_mesh(
@@ -343,6 +363,30 @@ fn read_texture(images: &[gltf::image::Data], texture: gltf::Texture<'_>) -> Ima
         data: texture.pixels.clone(),
         width: texture.width,
         height: texture.height,
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum LoadGlbError {
+    FileNotFound(PathBuf),
+    InvalidFormat,
+    /// File was exported into an invalid GLTF format
+    Corrupted(String),
+}
+impl Error for LoadGlbError {}
+impl Display for LoadGlbError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadGlbError::FileNotFound(invalid_path) => {
+                write!(f, "File '{}' was not found", invalid_path.display())
+            }
+            LoadGlbError::InvalidFormat => {
+                write!(f, "File has wrong format. Is this a glb file?")
+            }
+            LoadGlbError::Corrupted(e) => {
+                write!(f, "File cannot be read: {e}")
+            }
+        }
     }
 }
 

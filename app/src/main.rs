@@ -108,7 +108,8 @@ fn spawn_targets(
     entities: &mut ace::Entities,
 ) -> ace::physics::Collider {
     // Collider should be hitting player even if visible object is very high (for testing)
-    let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"));
+    let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"))
+        .expect("Failed to load targets");
     let model = renderer.load_mesh(&mesh, shader_program);
     let targets = [
         vec3!(0.0, 0.0, 0.0),
@@ -171,7 +172,8 @@ fn spawn_floor(
     shader_program: u32,
     entities: &mut ace::Entities,
 ) {
-    let (mut plane_mesh, _) = gfx::load_mesh_from_glb(Path::new("./app/models/Plane.glb"));
+    let (mut plane_mesh, _) =
+        gfx::load_mesh_from_glb(Path::new("./app/models/Plane.glb")).expect("failed to load plane");
     // Scale / Move model programatically
     plane_mesh.nodes[0].vertices = plane_mesh.nodes[0]
         .vertices
@@ -198,7 +200,8 @@ fn spawn_player(
     clock: Box<ace::glfw_input::GlfwClock>,
     collider: ace::physics::Collider,
 ) {
-    let (rifle_mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Rifle.glb"));
+    let (rifle_mesh, metainfo) =
+        gfx::load_mesh_from_glb(Path::new("./app/models/Rifle.glb")).expect("failed to load rifle");
     let rifle_model = renderer.load_mesh(&rifle_mesh, pbr_shader);
     let mut player_script = PlayerScript::new(clock);
     player_script.set_bullet_shader(bullet_shader);

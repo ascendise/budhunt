@@ -6,7 +6,7 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Transform {
     pub position: math::Vec3,
     pub rotation: math::Matrix4,
@@ -37,13 +37,13 @@ impl Transform {
 
     /// Returns a unit vector rotated by [Transform::rotation]
     pub fn direction(&self) -> math::Vec3 {
-        let direction = &self.rotation * vec4!(0.0, 0.0, -1.0, 0.0);
+        let direction = self.rotation * vec4!(0.0, 0.0, -1.0, 0.0);
         direction.into_vec()
     }
 
     pub fn model_matrix(&self) -> math::Matrix4 {
         let translation = math::Matrix4::translation(&self.position);
-        &translation * &self.rotation
+        translation * self.rotation
     }
 
     /// Returns new set of transformed vertices
@@ -51,7 +51,7 @@ impl Transform {
         let model_matrix = self.model_matrix();
         vertices
             .iter()
-            .map(|v| &model_matrix * vec4!(v, 1.0))
+            .map(|v| model_matrix * vec4!(v, 1.0))
             .map(|v| v.into_vec())
             .collect()
     }

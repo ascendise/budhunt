@@ -26,11 +26,10 @@ impl ace::Script for PlayerScript {
             .unwrap_or(vec2!(0.0));
         let (move_direction, camera_direction) = self.turn_camera(&cursor_offset);
         let rigid_body = self.set_player_velocity(player, &inputs, move_direction);
-        let mut transform = component!(
+        let mut transform = *component!(
             &player[ace::Components::TRANSFORM],
             ace::Components::Transform
-        )
-        .clone();
+        );
         transform.rotate_fpv(&camera_direction);
         updates.set_batch(
             player.id(),
@@ -136,11 +135,11 @@ impl PlayerScript {
         for input in inputs {
             if let ace::Input::Shoot = input {
                 let rotation = rotation_fpv(direction);
-                let muzzle_position = &rotation * vec4!(muzzle_position, 1.0);
+                let muzzle_position = rotation * vec4!(muzzle_position, 1.0);
                 let muzzle_position = position + muzzle_position.into_vec();
                 let transform = ace::x3d::Transform {
                     position: muzzle_position.into_vec(),
-                    rotation: rotation.clone(),
+                    rotation,
                 };
                 let vertices = vec![vec3!(0.0), vec3!(0.0, 0.0, -100.0)];
                 updates.spawn(vec![

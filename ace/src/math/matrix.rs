@@ -4,7 +4,7 @@ use crate::{
     math::{Vec3, Vec4},
     vec4,
 };
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Matrix4 {
     pub data: [[f32; 4]; 4],
 }
@@ -91,14 +91,14 @@ impl Matrix4 {
         let mut adjugate = Matrix4::new(0.0);
         for r in 0..=3 {
             for c in 0..=3 {
-                let submatrix = self.to_3x3_matrix(r, c);
+                let submatrix = self.get_3x3_matrix(r, c);
                 adjugate[c][r] = signs[c][r] * Self::determinant_3x3(submatrix);
             }
         }
         adjugate
     }
 
-    fn to_3x3_matrix(&self, remove_row: usize, remove_column: usize) -> [[f32; 3]; 3] {
+    fn get_3x3_matrix(&self, remove_row: usize, remove_column: usize) -> [[f32; 3]; 3] {
         let mut matrix = [[0f32; 3]; 3];
         for r in 0..matrix.len() {
             let row = if r >= remove_row {
@@ -162,7 +162,7 @@ impl Add for Matrix4 {
     type Output = Matrix4;
 
     fn add(self, rhs: Self) -> Self::Output {
-        &self + &rhs
+        (&self).add(&rhs)
     }
 }
 impl Sub for &Matrix4 {
@@ -177,7 +177,7 @@ impl Sub for Matrix4 {
     type Output = Matrix4;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        &self - &rhs
+        (&self).sub(&rhs)
     }
 }
 impl Mul for &Matrix4 {
@@ -203,7 +203,7 @@ impl Mul for Matrix4 {
     type Output = Matrix4;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        &self * &rhs
+        (&self).mul(&rhs)
     }
 }
 
@@ -245,14 +245,14 @@ impl Mul<&Vec4> for Matrix4 {
     type Output = Vec4;
 
     fn mul(self, rhs: &Vec4) -> Self::Output {
-        &self * rhs
+        (&self).mul(rhs)
     }
 }
 impl Mul<Vec4> for Matrix4 {
     type Output = Vec4;
 
     fn mul(self, rhs: Vec4) -> Self::Output {
-        &self * rhs
+        (&self).mul(rhs)
     }
 }
 
@@ -268,6 +268,6 @@ impl Mul<f32> for Matrix4 {
     type Output = Matrix4;
 
     fn mul(self, rhs: f32) -> Self::Output {
-        &self * rhs
+        (&self).mul(rhs)
     }
 }

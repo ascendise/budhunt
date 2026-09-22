@@ -31,8 +31,7 @@ impl PhysicsSystem {
     fn move_entity(entity: Entity<'_, Components>, updates: &mut crate::Update<Components>) {
         let rigid_body = component!(&entity[Components::RIGIDBODY], Components::RigidBody);
         if let Some(velocity) = &rigid_body.velocity {
-            let mut transform =
-                component!(&entity[Components::TRANSFORM], Components::Transform).clone();
+            let mut transform = *component!(&entity[Components::TRANSFORM], Components::Transform);
             transform.translate(velocity);
             updates.set(entity.id(), Components::Transform(transform));
         }
@@ -52,11 +51,10 @@ impl PhysicsSystem {
         for event in events {
             if let Some(collision_point) = event.collision_point {
                 let entity = entities.get_entity(event.entity_id);
-                let mut transform = component!(
+                let mut transform = *component!(
                     entity.get(Components::TRANSFORM),
                     Some(Components::Transform)
-                )
-                .clone();
+                );
                 transform.position = collision_point;
                 updates.set(event.entity_id, Components::Transform(transform));
             }
@@ -98,26 +96,21 @@ impl System for CollisionSystem {
         let rigid_bodies = entities.get_bucket(Components::RIGIDBODY);
         for collider in &colliders {
             let mut collision_entity = CollisionEntity {
-                collider: component!(&collider[Components::COLLIDER], Components::Collider).clone(),
-                transform: component!(&collider[Components::TRANSFORM], Components::Transform)
-                    .clone(),
+                collider: component!(&collider[Components::COLLIDER], Components::Collider),
+                transform: *component!(&collider[Components::TRANSFORM], Components::Transform),
                 physics: maybe_component!(
                     &rigid_bodies[collider.id()],
                     Some(Components::RigidBody)
-                )
-                .cloned(),
+                ),
             };
             for other in colliders.iter().skip(collider.id() + 1) {
                 let mut other_collision_entity = CollisionEntity {
-                    collider: component!(&other[Components::COLLIDER], Components::Collider)
-                        .clone(),
-                    transform: component!(&other[Components::TRANSFORM], Components::Transform)
-                        .clone(),
+                    collider: component!(&other[Components::COLLIDER], Components::Collider),
+                    transform: *component!(&other[Components::TRANSFORM], Components::Transform),
                     physics: maybe_component!(
                         &rigid_bodies[other.id()],
                         Some(Components::RigidBody)
-                    )
-                    .cloned(),
+                    ),
                 };
                 if collision_entity.intersects(&other_collision_entity) {
                     let collider_collision_point =
@@ -148,7 +141,7 @@ impl CollisionSystem {
         obstacle: &CollisionEntity,
     ) -> Option<math::Vec3> {
         const DEPTH: usize = 32;
-        let mut displacement = collider.physics.clone()?.velocity?;
+        let mut displacement = collider.physics?.velocity?;
         collider.transform.translate(&-displacement);
         for _ in 0..DEPTH {
             displacement /= 2.0;
@@ -160,12 +153,12 @@ impl CollisionSystem {
         Some(collider.transform.position)
     }
 }
-struct CollisionEntity {
-    collider: Collider,
+struct CollisionEntity<'a> {
+    collider: &'a Collider,
     transform: x3d::Transform,
-    physics: Option<RigidBody>,
+    physics: Option<&'a RigidBody>,
 }
-impl CollisionEntity {
+impl<'a> CollisionEntity<'a> {
     pub fn intersects(&self, other: &CollisionEntity) -> bool {
         let collider = self.transform.apply(&self.collider.vertices);
         let collider = Collider::new(collider);

@@ -86,7 +86,7 @@ pub fn render_should_transform_models_with_specific_transform() {
     let model = vec![model];
     entities.create_entity(vec![
         Components::Model(model),
-        Components::Transform(expected_transform.clone()),
+        Components::Transform(expected_transform),
     ]);
     // Act
     sut.run(&mut entities, &Events::empty());

@@ -141,11 +141,10 @@ fn spawn_point_lights(entities: &mut ace::Entities) {
         vec3!(0.0, 0.0, -3.0),
     ];
     let move_script = script!(|entity: &ace::Entity<'_, ace::Components>, _| {
-        let mut transform = component!(
+        let mut transform = *component!(
             &entity[ace::Components::TRANSFORM],
             ace::Components::Transform
-        )
-        .clone();
+        );
         transform.position += vec3!(0.0, 0.001, 0.0);
         vec![ace::Components::Transform(transform)]
     });

@@ -74,7 +74,7 @@ impl RenderSystem {
         let nodes = component!(&model[Components::MODEL], Components::Model).clone();
         Model {
             nodes,
-            transform: transform.clone(),
+            transform: *transform,
         }
     }
 
@@ -95,7 +95,7 @@ impl RenderSystem {
         );
         let shader = *component!(&line[Components::LINE], Components::Line);
         Line {
-            transform: transform.clone(),
+            transform: *transform,
             shader,
         }
     }
@@ -146,7 +146,7 @@ pub struct Model {
     pub transform: Transform,
 }
 pub type ModelNodes = Vec<ModelNode>;
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct ModelNode {
     pub vao: VertexArray,
     pub shader: Shader,
@@ -156,7 +156,7 @@ pub struct ModelNode {
 }
 pub type VertexArray = u32;
 pub type Shader = u32;
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Texture {
     albedo: Tex,
     metallic_roughness_ao: Tex,

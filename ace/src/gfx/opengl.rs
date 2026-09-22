@@ -539,8 +539,8 @@ impl<'a> OpenGlShader for LineShader<'a> {
                 gl::UseProgram(line.shader);
                 gl_matrix_uniform(line.shader, self.projection, "uProjection");
                 gl_matrix_uniform(line.shader, self.view, "uView");
-                let model_matrix = &math::Matrix4::translation(&line.transform.position)
-                    * &line.transform.rotation;
+                let model_matrix =
+                    math::Matrix4::translation(&line.transform.position) * line.transform.rotation;
                 gl_matrix_uniform(line.shader, &model_matrix, "uModel");
                 gl_vec3_uniform(line.shader, &vec3!(1.0, 0.0, 0.0), "uColor");
                 gl::LineWidth(2.0);

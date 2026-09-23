@@ -18,7 +18,7 @@ struct BrdfResult {
 uniform sampler2D uIrradianceMap;
 uniform sampler2D uPrefilterMap;
 uniform sampler2D uBrdfLut;
-
+uniform samplerCube uShadowMap;
 uniform Material uMaterial;
 
 #define MAX_POINT_LIGHTS 64
@@ -28,6 +28,7 @@ uniform PointLight uPointLights[MAX_POINT_LIGHTS];
 in vec3 vFragPos;
 in vec3 vNormal;
 in vec2 vTexPos;
+in vec3 vLightPos;
 out vec4 fColor;
 
 vec3 calculateAmbience(vec3 albedo, float metallic, float roughness, float ao);
@@ -43,18 +44,23 @@ vec3 fresnel(float cosTheta, vec3 albedo, float metallic);
 float geometry(vec3 normal, vec3 viewDirection, vec3 lightDirection, float roughness);
 /// Schlick-GGX
 float geometryGgx(vec3 normal, vec3 direction, float roughness);
+float shadow();
 vec3 hdrToSdr(vec3 hdrColor);
 
 const float PI = 3.14159265;
 
 void main() {
+  PointLight light = uPointLights[0];
+  vec3 shadowColor = vec3(texture(uShadowMap, -light.position).r);
+  fColor = vec4(shadowColor, 1.0);
+  return;
   vec3 albedo = texture(uMaterial.albedo, vTexPos).rgb;
   float metallic = texture(uMaterial.metallicRoughnessAo, vTexPos).b;
   float roughness = texture(uMaterial.metallicRoughnessAo, vTexPos).g;
   float ao = texture(uMaterial.metallicRoughnessAo, vTexPos).r;
   vec3 ambient = calculateAmbience(albedo, metallic, roughness, ao); //ambient too bright?
   vec3 radiance = calculateRadiance(albedo, metallic, roughness, ao);
-  vec3 color = ambient + radiance;
+  vec3 color = ambient + shadow() * radiance;
   color = hdrToSdr(color);
   fColor = vec4(color, 1.0);
 }
@@ -146,4 +152,10 @@ float geometry(vec3 normal, vec3 viewDirection, vec3 lightDirection, float rough
 float geometryGgx(vec3 normal, vec3 direction, float roughness) {
   float alignment = max(dot(normal, direction), 0.0);
   return alignment / (alignment * (1.0 - roughness) + roughness);
+}
+
+float shadow() {
+  PointLight light = uPointLights[0];
+  float depth = texture(uShadowMap, vFragPos - light.position).r;
+  return 1.0 - depth;
 }

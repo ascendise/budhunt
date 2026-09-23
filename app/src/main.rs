@@ -1,4 +1,5 @@
 use crate::scripts::PlayerScript;
+
 use ace::{
     component,
     gfx::{self},
@@ -66,17 +67,16 @@ fn main() {
     spawn_targets(&mut renderer, pbr_program, &mut entities);
     spawn_point_lights(&mut entities);
     spawn_floor(&mut renderer, pbr_program, &mut entities);
-    let window = Arc::new(Mutex::new(window));
     let mut world = setup_world(renderer, entities, clock, &window);
     while !window.lock().unwrap().should_close() {
         world.run_frame();
         window.lock().unwrap().swap_buffers();
         glfw.poll_events();
-        print_opengl_errors();
+        gfx::opengl::assert_no_ogl_error("OpenGL error in game loop");
     }
 }
 
-fn setup_window(glfw: &mut glfw::Glfw) -> glfw::PWindow {
+fn setup_window(glfw: &mut glfw::Glfw) -> Arc<Mutex<glfw::PWindow>> {
     glfw.window_hint(glfw::WindowHint::ContextVersionMajor(3));
     glfw.window_hint(glfw::WindowHint::ContextVersionMinor(3));
     glfw.window_hint(glfw::WindowHint::OpenGlProfile(
@@ -92,7 +92,7 @@ fn setup_window(glfw: &mut glfw::Glfw) -> glfw::PWindow {
     });
     window.set_cursor_mode(glfw::CursorMode::Disabled);
     window.make_current();
-    window
+    Arc::new(Mutex::new(window))
 }
 
 fn set_skybox(renderer: &mut gfx::opengl::OpenGlRenderer) {
@@ -141,7 +141,7 @@ fn spawn_targets(
 
 fn spawn_point_lights(entities: &mut ace::Entities) {
     let point_lights = [
-        vec3!(0.7, 0.2, 2.0),
+        vec3!(0.0, 5.0, 0.0),
         vec3!(2.3, -3.3, -4.0),
         vec3!(-4.0, 2.0, -12.0),
         vec3!(0.0, 0.0, -3.0),
@@ -257,16 +257,4 @@ fn setup_world(
         clock.clone(),
         Box::new(input_listener),
     )
-}
-
-fn print_opengl_errors() {
-    unsafe {
-        loop {
-            let err = gl::GetError();
-            if err == 0 {
-                break;
-            }
-            eprintln!("OPENGL ERROR ({err})");
-        }
-    }
 }

@@ -483,24 +483,26 @@ struct ModelShader<'a> {
 }
 impl<'a> OpenGlShader for ModelShader<'a> {
     fn render(&self) {
-        for model in self.models {
-            for node in &model.nodes {
-                unsafe {
-                    let shadow_map = self.render_shadow_map(node);
+        unsafe {
+            let shadow_map = self.create_shadow_map();
+            for model in self.models {
+                for node in &model.nodes {
                     gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
                     self.render_model(node, &model.transform, shadow_map);
-                    gl::DeleteTextures(1, &(shadow_map as u32));
                 }
             }
+            gl::DeleteTextures(1, &(shadow_map as u32));
         }
     }
 }
 impl<'a> ModelShader<'a> {
+    const SHADOW_MAP_SIZE: i32 = 1024;
+
     fn create_normal_matrix(model: &math::Matrix4, view: &math::Matrix4) -> math::Matrix4 {
         (model * view).inverse().transpose()
     }
 
-    fn set_model_uniforms(&self, model: &ModelNode, transform: &Transform) {
+    fn set_model_uniforms(&self, model: &ModelNode, transform: &Transform, shadow_map: Tex) {
         gl_matrix_uniform(model.shader, self.projection, "uProjection");
         gl_matrix_uniform(model.shader, self.view, "uView");
         let model_matrix = transform.model_matrix();
@@ -513,6 +515,7 @@ impl<'a> ModelShader<'a> {
             model.material.metallic_roughness_ao,
             "uMaterial.metallicRoughnessAo",
         );
+        gl_int_uniform(model.shader, shadow_map, "uShadowMap");
         gl_float_uniform(model.shader, 0.5, "uExposure");
     }
 
@@ -522,62 +525,166 @@ impl<'a> ModelShader<'a> {
         gl_int_uniform(model.shader, self.skybox.brdf_lut, "uBrdfLut");
     }
 
-    /// unsafe because returned [Tex] needs to be deleted manually with [gl::DeleteFramebuffers]
-    unsafe fn render_shadow_map(&self, model: &ModelNode) -> Tex {
-        const SHADOW_MAP_SIZE: i32 = 1024;
+    /// unsafe because returned [Tex] needs to be deleted manually with [gl::DeleteTextures]
+    unsafe fn create_shadow_map(&self) -> Tex {
         unsafe {
-            gl::BindVertexArray(model.vao);
             gl::UseProgram(self.shadow_shader);
-            //gl::Viewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+            let mut params = [0; 4];
+            gl::GetIntegerv(gl::VIEWPORT, params.as_mut_ptr());
+            gl::Viewport(0, 0, Self::SHADOW_MAP_SIZE, Self::SHADOW_MAP_SIZE);
+            //TODO: render multiple lights
+            let light = self.lights.first().expect("no point lights defined");
+            gl::Clear(gl::DEPTH_BUFFER_BIT);
+            self.set_shadow_map_uniforms(light);
+            let (shadow_map_buffer, shadow_cubemap) = Self::create_cubemap();
+            gl::FramebufferTexture(
+                gl::FRAMEBUFFER,
+                gl::DEPTH_ATTACHMENT,
+                shadow_cubemap as u32,
+                0,
+            );
+            gl::DrawBuffer(gl::NONE);
+            gl::ReadBuffer(gl::NONE);
+            assert_no_ogl_error("before CheckFramebufferStatus");
+            self.render_shadow_map();
+            let framebuffer_err = gl::CheckFramebufferStatus(gl::FRAMEBUFFER);
+            assert!(
+                framebuffer_err == gl::FRAMEBUFFER_COMPLETE,
+                "Incomplete framebuffer: {framebuffer_err:x}"
+            );
+            assert_no_ogl_error("render shadow face");
+            gl::DeleteFramebuffers(1, &shadow_map_buffer);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            gl::Viewport(params[0], params[1], params[2], params[3]);
+            shadow_cubemap
+        }
+    }
+
+    fn render_shadow_map(&self) {
+        unsafe {
+            for model in self.models {
+                for node in &model.nodes {
+                    gl::BindVertexArray(node.vao);
+                    gl_matrix_uniform(
+                        self.shadow_shader,
+                        &model.transform.model_matrix(),
+                        "uModel",
+                    );
+                    if node.indices > 0 {
+                        gl::DrawElements(gl::TRIANGLES, node.indices, gl::UNSIGNED_INT, null());
+                    } else {
+                        gl::DrawArrays(gl::TRIANGLES, 0, node.vertices);
+                    }
+                }
+            }
+        }
+    }
+
+    /// unsafe because frambuffer (u32) and Tex need to be deleted manually
+    unsafe fn create_cubemap() -> (u32, Tex) {
+        unsafe {
             let mut shadow_map_buffer = 0;
             gl::GenFramebuffers(1, &mut shadow_map_buffer);
             gl::BindFramebuffer(gl::FRAMEBUFFER, shadow_map_buffer);
-            let mut shadow_map = 0;
-            gl::GenTextures(1, &mut shadow_map);
-            gl::BindTexture(gl::TEXTURE_2D, shadow_map);
+            let mut shadow_map_texture = 0;
+            gl::GenTextures(1, &mut shadow_map_texture);
+            gl::BindTexture(gl::TEXTURE_CUBE_MAP, shadow_map_texture);
+            for face in 0..=5 {
+                let face = gl::TEXTURE_CUBE_MAP_POSITIVE_X + face;
+                Self::set_cubemap_tex(face);
+            }
+            (shadow_map_buffer, shadow_map_texture as Tex)
+        }
+    }
+
+    fn set_cubemap_tex(face: u32) {
+        unsafe {
             gl::TexImage2D(
-                gl::TEXTURE_2D,
+                face,
                 0,
                 gl::DEPTH_COMPONENT as i32,
-                SHADOW_MAP_SIZE,
-                SHADOW_MAP_SIZE,
+                Self::SHADOW_MAP_SIZE,
+                Self::SHADOW_MAP_SIZE,
                 0,
                 gl::DEPTH_COMPONENT,
                 gl::FLOAT,
                 null(),
             );
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
-            gl::FramebufferTexture2D(
-                gl::FRAMEBUFFER,
-                gl::DEPTH_ATTACHMENT,
-                gl::TEXTURE_2D,
-                shadow_map,
-                0,
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_MIN_FILTER,
+                gl::NEAREST as i32,
             );
-            for light in self.lights {
-                gl::Clear(gl::DEPTH_BUFFER_BIT);
-                self.set_shadow_map_uniforms(light);
-                if model.indices > 0 {
-                    gl::DrawElements(gl::TRIANGLES, model.indices, gl::UNSIGNED_INT, null());
-                } else {
-                    gl::DrawArrays(gl::TRIANGLES, 0, model.vertices);
-                }
-            }
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::DeleteFramebuffers(1, &shadow_map_buffer);
-            shadow_map as i32
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_MAG_FILTER,
+                gl::NEAREST as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_WRAP_S,
+                gl::CLAMP_TO_EDGE as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_WRAP_T,
+                gl::CLAMP_TO_EDGE as i32,
+            );
+            gl::TexParameteri(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_WRAP_R,
+                gl::CLAMP_TO_EDGE as i32,
+            );
         }
     }
 
     fn set_shadow_map_uniforms(&self, light: &Light) {
-        let projection = math::orthogonal(-10.0, 10.0, -10.0, 10.0, 1.0, 7.5);
-        gl_matrix_uniform(self.shadow_shader, &projection, "uProjection");
+        //let projection = math::orthogonal(-10.0, 10.0, -10.0, 10.0, 1.0, 7.5);
+        const FRUSTUM_FAR: f32 = 25.0;
+        let projection = math::projection(90.0, 1.0, 1.0, FRUSTUM_FAR);
+        gl_float_uniform(self.shadow_shader, FRUSTUM_FAR, "uFrustumFar");
         let Light::Point(light) = light;
-        let view = math::look_at(&light.position, &vec3!(0.0), &vec3!(0.0, 1.0, 0.0));
-        gl_matrix_uniform(self.shadow_shader, &view, "uView");
+        gl_vec3_uniform(self.shadow_shader, &light.position, "uLightPos");
+        let matrices = [
+            math::look_at(
+                &light.position,
+                &(light.position + vec3!(1.0, 0.0, 0.0)),
+                &vec3!(0.0, -1.0, 0.0),
+            ),
+            math::look_at(
+                &light.position,
+                &(light.position + vec3!(-1.0, 0.0, 0.0)),
+                &vec3!(0.0, -1.0, 0.0),
+            ),
+            math::look_at(
+                &light.position,
+                &(light.position + vec3!(0.0, 1.0, 0.0)),
+                &vec3!(0.0, 0.0, 1.0),
+            ),
+            math::look_at(
+                &light.position,
+                &(light.position + vec3!(0.0, -1.0, 0.0)),
+                &vec3!(0.0, 0.0, -1.0),
+            ),
+            math::look_at(
+                &light.position,
+                &(light.position + vec3!(0.0, 0.0, 1.0)),
+                &vec3!(0.0, -1.0, 0.0),
+            ),
+            math::look_at(
+                &light.position,
+                &(light.position + vec3!(0.0, 0.0, -1.0)),
+                &vec3!(0.0, -1.0, 0.0),
+            ),
+        ];
+        for (m, matrix) in matrices.iter().enumerate() {
+            let shadow_transform = &projection * matrix;
+            gl_matrix_uniform(
+                self.shadow_shader,
+                &shadow_transform,
+                &format!("uShadowTransforms[{m}]"),
+            );
+        }
     }
 
     fn render_model(&self, model: &ModelNode, transform: &Transform, shadow_map: Tex) {
@@ -585,9 +692,8 @@ impl<'a> ModelShader<'a> {
             gl::BindVertexArray(model.vao);
             gl::UseProgram(model.shader);
         }
-        self.set_model_uniforms(model, transform);
+        self.set_model_uniforms(model, transform, shadow_map);
         self.set_skybox_uniforms(model);
-        gl_int_uniform(model.shader, shadow_map, "uShadowMap");
         let mut point_count = 0;
         for light in self.lights {
             match light {
@@ -736,5 +842,20 @@ impl Error for OpenGlError {}
 impl Display for OpenGlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.err)
+    }
+}
+
+pub fn assert_no_ogl_error(message: &str) {
+    unsafe {
+        let mut is_err = false;
+        loop {
+            let err = gl::GetError();
+            if err == 0 {
+                break;
+            }
+            is_err = true;
+            eprintln!("OPENGL ERROR ({err}): {message}");
+        }
+        assert!(!is_err, "OpenGL error encountered. Terminating program");
     }
 }

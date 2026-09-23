@@ -19,15 +19,13 @@ impl Renderer for OpenGlRenderer {
         let projection = &projection.to_projection_matrix();
         let view = &camera.to_view_matrix();
         let skybox = self.skybox.as_ref().expect("No skybox set!");
-        let models: Vec<Model> = renderables
+        let models: Vec<&Model> = renderables
             .iter()
             .filter_map(|m| maybe_component!(m, Renderable::Model))
-            .cloned()
             .collect();
-        let lights: Vec<Light> = renderables
+        let lights: Vec<&Light> = renderables
             .iter()
             .filter_map(|m| maybe_component!(m, Renderable::Light))
-            .cloned()
             .collect();
         let shader = ModelShader {
             projection,
@@ -458,8 +456,8 @@ impl<'a> OpenGlShader for SkyboxShader<'a> {
 struct ModelShader<'a> {
     projection: &'a math::Matrix4,
     view: &'a math::Matrix4,
-    models: &'a [Model],
-    lights: &'a [Light],
+    models: &'a [&'a Model],
+    lights: &'a [&'a Light],
     skybox: &'a Skybox,
 }
 impl<'a> OpenGlShader for ModelShader<'a> {

@@ -17,24 +17,7 @@ impl System for RenderSystem {
         let inputs = events.get_events(|e| event!(e, Event::Input));
         Self::handle_inputs(&inputs, &mut projection);
         let camera = Self::find_camera(entities);
-        let models: Vec<Renderable> = entities
-            .get_entities(Components::MODEL)
-            .iter()
-            .map(|m| Renderable::Model(Self::get_model(m)))
-            .collect();
-        let mut lights: Vec<Renderable> = entities
-            .get_entities(Components::LIGHT)
-            .iter()
-            .map(|l| Renderable::Light(Self::get_light(l)))
-            .collect();
-        let mut renderables = models;
-        renderables.append(&mut lights);
-        let mut lines: Vec<Renderable> = entities
-            .get_entities(Components::LINE)
-            .iter()
-            .map(|l| Renderable::Line(Self::get_line(l)))
-            .collect();
-        renderables.append(&mut lines);
+        let renderables = Self::get_renderables(entities);
         self.renderer.render(&projection, &camera, &renderables);
     }
 }
@@ -69,6 +52,21 @@ impl RenderSystem {
         }
     }
 
+    fn get_renderables(entities: &mut Entities) -> Vec<Renderable> {
+        let mut renderables = Self::get_models(entities);
+        renderables.extend(Self::get_lights(entities));
+        renderables.extend(Self::get_lines(entities));
+        renderables
+    }
+
+    fn get_models(entities: &mut Entities) -> Vec<Renderable> {
+        entities
+            .get_entities(Components::MODEL)
+            .iter()
+            .map(|m| Renderable::Model(Self::get_model(m)))
+            .collect()
+    }
+
     fn get_model(model: &Entity<'_, Components>) -> Model {
         let transform = component!(model.get(Components::TRANSFORM), Some(Components::Transform) or &Default::default());
         let nodes = component!(&model[Components::MODEL], Components::Model).clone();
@@ -76,6 +74,14 @@ impl RenderSystem {
             nodes,
             transform: *transform,
         }
+    }
+
+    fn get_lights(entities: &mut Entities) -> Vec<Renderable> {
+        entities
+            .get_entities(Components::LIGHT)
+            .iter()
+            .map(|l| Renderable::Light(Self::get_light(l)))
+            .collect()
     }
 
     fn get_light(light: &Entity<'_, Components>) -> Light {
@@ -86,6 +92,14 @@ impl RenderSystem {
         let mut light = component!(&light[Components::LIGHT], Components::Light).clone();
         light.transform(&transform.position);
         light
+    }
+
+    fn get_lines(entities: &mut Entities) -> Vec<Renderable> {
+        entities
+            .get_entities(Components::LINE)
+            .iter()
+            .map(|l| Renderable::Line(Self::get_line(l)))
+            .collect()
     }
 
     fn get_line(line: &Entity<'_, Components>) -> Line {

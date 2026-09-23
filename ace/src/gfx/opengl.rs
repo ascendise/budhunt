@@ -12,6 +12,7 @@ pub struct OpenGlRenderer {
     texture_count: u32,
     skybox: Option<Skybox>,
     line_vao: VertexArray,
+    shadow_shader: Shader,
 }
 impl Renderer for OpenGlRenderer {
     fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
@@ -33,6 +34,7 @@ impl Renderer for OpenGlRenderer {
             models: &models,
             lights: &lights,
             skybox,
+            shadow_shader: self.shadow_shader,
         };
         shader.render();
         self.render_skybox(projection, view);
@@ -41,6 +43,8 @@ impl Renderer for OpenGlRenderer {
 }
 impl OpenGlRenderer {
     pub const LINE: [math::Vec3; 2] = [vec3!(0.0), vec3!(0.0, 0.0, -100.0)];
+    pub const SHADOW_VERTEX_SHADER: &str = include_str!("shadow.vs.glsl");
+    pub const SHADOW_FRAGMENT_SHADER: &str = include_str!("shadow.fs.glsl");
 
     pub fn init() -> Self {
         unsafe {
@@ -52,6 +56,11 @@ impl OpenGlRenderer {
                 texture_count: 0,
                 skybox: None,
                 line_vao,
+                shadow_shader: OpenGlRenderer::compile_shader(&[
+                    CompileShader::new(Self::SHADOW_VERTEX_SHADER, gl::VERTEX_SHADER),
+                    CompileShader::new(Self::SHADOW_FRAGMENT_SHADER, gl::FRAGMENT_SHADER),
+                ])
+                .unwrap(),
             }
         }
     }
@@ -239,27 +248,23 @@ impl OpenGlRenderer {
         }
     }
 
-    pub fn compile_shader(
-        &self,
-        vertex_shader: &str,
-        fragment_shader: &str,
-        tonemap_shader: &str,
-    ) -> Result<Shader, OpenGlError> {
+    pub fn compile_shader(shaders: &[CompileShader]) -> Result<Shader, OpenGlError> {
         unsafe {
-            let vertex_shader = Self::compile(vertex_shader, gl::VERTEX_SHADER)?;
-            let fragment_shader =
-                Self::compile(fragment_shader, gl::FRAGMENT_SHADER).inspect_err(|_| {
-                    gl::DeleteShader(vertex_shader);
-                })?;
-            let tonemap_shader =
-                Self::compile(tonemap_shader, gl::FRAGMENT_SHADER).inspect_err(|_| {
-                    gl::DeleteShader(vertex_shader);
-                    gl::DeleteShader(fragment_shader);
-                })?;
+            let mut compiled_shaders = vec![];
             let shader_program = gl::CreateProgram();
-            gl::AttachShader(shader_program, vertex_shader);
-            gl::AttachShader(shader_program, fragment_shader);
-            gl::AttachShader(shader_program, tonemap_shader);
+            for shader in shaders {
+                let shader = Self::compile(shader.source, shader.shader_type);
+                match shader {
+                    Ok(s) => {
+                        compiled_shaders.push(s);
+                        gl::AttachShader(shader_program, s);
+                    }
+                    Err(e) => {
+                        Self::delete_shaders(&compiled_shaders);
+                        return Err(e);
+                    }
+                }
+            }
             gl::LinkProgram(shader_program);
             let mut success = 0;
             gl::GetProgramiv(shader_program, gl::LINK_STATUS, &mut success);
@@ -268,15 +273,17 @@ impl OpenGlRenderer {
                 gl::GetProgramInfoLog(shader_program, 512, null_mut(), err.as_mut_ptr());
                 let err = String::from_utf8(err.iter().map(|c| *c as u8).collect()).unwrap();
                 let err = err.trim_end_matches('\0').to_string();
-                gl::DeleteShader(tonemap_shader);
-                gl::DeleteShader(fragment_shader);
-                gl::DeleteShader(vertex_shader);
+                Self::delete_shaders(&compiled_shaders);
                 return Err(OpenGlError { err });
             }
-            gl::DeleteShader(tonemap_shader);
-            gl::DeleteShader(fragment_shader);
-            gl::DeleteShader(vertex_shader);
+            Self::delete_shaders(&compiled_shaders);
             Ok(shader_program)
+        }
+    }
+
+    fn delete_shaders(shaders: &[u32]) {
+        unsafe {
+            shaders.iter().for_each(|s| gl::DeleteShader(*s));
         }
     }
 
@@ -428,6 +435,19 @@ impl OpenGlRenderer {
     }
 }
 
+pub struct CompileShader {
+    source: &'static str,
+    shader_type: u32,
+}
+impl CompileShader {
+    pub fn new(source: &'static str, shader_type: u32) -> Self {
+        Self {
+            source,
+            shader_type,
+        }
+    }
+}
+
 trait OpenGlShader {
     fn render(&self);
 }
@@ -459,37 +479,17 @@ struct ModelShader<'a> {
     models: &'a [&'a Model],
     lights: &'a [&'a Light],
     skybox: &'a Skybox,
+    shadow_shader: Shader,
 }
 impl<'a> OpenGlShader for ModelShader<'a> {
     fn render(&self) {
-        unsafe {
-            for model in self.models {
-                for node in &model.nodes {
-                    gl::BindVertexArray(node.vao);
-                    gl::UseProgram(node.shader);
-                    self.set_model_uniforms(node, &model.transform);
-                    self.set_skybox_uniforms(node);
-                    let mut point_count = 0;
-                    for light in self.lights {
-                        match light {
-                            Light::Point(light) => {
-                                let key = &format!("uPointLights[{point_count}]");
-                                gl_vec3_uniform(node.shader, &light.color, &subkey(key, "color"));
-                                gl_vec3_uniform(
-                                    node.shader,
-                                    &to_view_space(self.view, &light.position),
-                                    &subkey(key, "position"),
-                                );
-                                point_count += 1;
-                            }
-                        }
-                    }
-                    gl_int_uniform(node.shader, point_count, "uPointLightsSize");
-                    if node.indices > 0 {
-                        gl::DrawElements(gl::TRIANGLES, node.indices, gl::UNSIGNED_INT, null());
-                    } else {
-                        gl::DrawArrays(gl::TRIANGLES, 0, node.vertices);
-                    }
+        for model in self.models {
+            for node in &model.nodes {
+                unsafe {
+                    let shadow_map = self.render_shadow_map(node);
+                    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+                    self.render_model(node, &model.transform, shadow_map);
+                    gl::DeleteTextures(1, &(shadow_map as u32));
                 }
             }
         }
@@ -520,6 +520,97 @@ impl<'a> ModelShader<'a> {
         gl_int_uniform(model.shader, self.skybox.diffuse, "uIrradianceMap");
         gl_int_uniform(model.shader, self.skybox.specular, "uPrefilterMap");
         gl_int_uniform(model.shader, self.skybox.brdf_lut, "uBrdfLut");
+    }
+
+    /// unsafe because returned [Tex] needs to be deleted manually with [gl::DeleteFramebuffers]
+    unsafe fn render_shadow_map(&self, model: &ModelNode) -> Tex {
+        const SHADOW_MAP_SIZE: i32 = 1024;
+        unsafe {
+            gl::BindVertexArray(model.vao);
+            gl::UseProgram(self.shadow_shader);
+            //gl::Viewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+            let mut shadow_map_buffer = 0;
+            gl::GenFramebuffers(1, &mut shadow_map_buffer);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, shadow_map_buffer);
+            let mut shadow_map = 0;
+            gl::GenTextures(1, &mut shadow_map);
+            gl::BindTexture(gl::TEXTURE_2D, shadow_map);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                gl::DEPTH_COMPONENT as i32,
+                SHADOW_MAP_SIZE,
+                SHADOW_MAP_SIZE,
+                0,
+                gl::DEPTH_COMPONENT,
+                gl::FLOAT,
+                null(),
+            );
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
+            gl::FramebufferTexture2D(
+                gl::FRAMEBUFFER,
+                gl::DEPTH_ATTACHMENT,
+                gl::TEXTURE_2D,
+                shadow_map,
+                0,
+            );
+            for light in self.lights {
+                gl::Clear(gl::DEPTH_BUFFER_BIT);
+                self.set_shadow_map_uniforms(light);
+                if model.indices > 0 {
+                    gl::DrawElements(gl::TRIANGLES, model.indices, gl::UNSIGNED_INT, null());
+                } else {
+                    gl::DrawArrays(gl::TRIANGLES, 0, model.vertices);
+                }
+            }
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            gl::DeleteFramebuffers(1, &shadow_map_buffer);
+            shadow_map as i32
+        }
+    }
+
+    fn set_shadow_map_uniforms(&self, light: &Light) {
+        let projection = math::orthogonal(-10.0, 10.0, -10.0, 10.0, 1.0, 7.5);
+        gl_matrix_uniform(self.shadow_shader, &projection, "uProjection");
+        let Light::Point(light) = light;
+        let view = math::look_at(&light.position, &vec3!(0.0), &vec3!(0.0, 1.0, 0.0));
+        gl_matrix_uniform(self.shadow_shader, &view, "uView");
+    }
+
+    fn render_model(&self, model: &ModelNode, transform: &Transform, shadow_map: Tex) {
+        unsafe {
+            gl::BindVertexArray(model.vao);
+            gl::UseProgram(model.shader);
+        }
+        self.set_model_uniforms(model, transform);
+        self.set_skybox_uniforms(model);
+        gl_int_uniform(model.shader, shadow_map, "uShadowMap");
+        let mut point_count = 0;
+        for light in self.lights {
+            match light {
+                Light::Point(light) => {
+                    let key = &format!("uPointLights[{point_count}]");
+                    gl_vec3_uniform(model.shader, &light.color, &subkey(key, "color"));
+                    gl_vec3_uniform(
+                        model.shader,
+                        &to_view_space(self.view, &light.position),
+                        &subkey(key, "position"),
+                    );
+                    point_count += 1;
+                }
+            }
+        }
+        gl_int_uniform(model.shader, point_count, "uPointLightsSize");
+        unsafe {
+            if model.indices > 0 {
+                gl::DrawElements(gl::TRIANGLES, model.indices, gl::UNSIGNED_INT, null());
+            } else {
+                gl::DrawArrays(gl::TRIANGLES, 0, model.vertices);
+            }
+        }
     }
 }
 struct LineShader<'a> {

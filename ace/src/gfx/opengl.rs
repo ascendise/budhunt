@@ -452,6 +452,51 @@ impl CompileShader {
 trait OpenGlShader {
     fn render(&self);
 }
+struct OpenGlShaderImpl {
+    vao: VertexArray,
+    shader: Shader,
+    uniforms: IndexMap<String, Uniform>,
+    draw: Draw,
+}
+impl OpenGlShaderImpl {
+    fn render(&self) {
+        unsafe {
+            gl::UseProgram(self.shader);
+            gl::BindVertexArray(self.vao);
+            self.set_uniforms();
+            match &self.draw {
+                Draw::Indices(i) => gl::DrawElements(gl::TRIANGLES, *i, gl::UNSIGNED_INT, null()),
+                Draw::Vertices(i) => gl::DrawArrays(gl::TRIANGLES, 0, *i),
+            }
+        }
+    }
+    fn set_uniforms(&self) {
+        for (key, uniform) in &self.uniforms {
+            uniform.set(self.shader, key);
+        }
+    }
+}
+enum Uniform {
+    Float(f32),
+    Int(i32),
+    Vec3(math::Vec3),
+    Matrix4(math::Matrix4),
+}
+impl Uniform {
+    pub fn set(&self, shader: Shader, key: &str) {
+        match self {
+            Uniform::Float(f) => gl_float_uniform(shader, *f, key),
+            Uniform::Int(i) => gl_int_uniform(shader, *i, key),
+            Uniform::Vec3(v3) => gl_vec3_uniform(shader, v3, key),
+            Uniform::Matrix4(m4) => gl_matrix_uniform(shader, m4, key),
+        }
+    }
+}
+enum Draw {
+    Indices(i32),
+    Vertices(i32),
+}
+
 struct SkyboxShader<'a> {
     view: &'a math::Matrix4,
     projection: &'a math::Matrix4,

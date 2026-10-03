@@ -16,6 +16,9 @@ pub struct OpenGlRenderer {
 }
 impl Renderer for OpenGlRenderer {
     fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
+        unsafe {
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+        }
         let projection = &projection.to_projection_matrix();
         let view = &camera.to_view_matrix();
         let skybox = self.skybox.as_ref().expect("No skybox set!");
@@ -44,8 +47,8 @@ impl Renderer for OpenGlRenderer {
         shadow_shader.use_shadow_shader(models, lights.first().unwrap());
         shadow_shader.render();
         shader.render();
-        self.render_skybox(projection, view);
-        self.render_lines(&camera.position, projection, view, renderables);
+        skybox.shader(*projection, *view).render();
+        self.render_lines(projection, view, renderables);
     }
 }
 impl OpenGlRenderer {
@@ -396,27 +399,8 @@ impl OpenGlRenderer {
         }
     }
 
-    fn render_skybox(&self, projection: &math::Matrix4, view: &math::Matrix4) {
-        let view: math::Matrix4 = [
-            [view[0][0], view[0][1], view[0][2], 0.0],
-            [view[1][0], view[1][1], view[1][2], 0.0],
-            [view[2][0], view[2][1], view[2][2], 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ]
-        .into();
-        if let Some(skybox) = &self.skybox {
-            let skybox_shader = SkyboxShader {
-                view: &view,
-                projection,
-                skybox,
-            };
-            skybox_shader.render();
-        }
-    }
-
     fn render_lines(
         &self,
-        _camera_position: &math::Vec3,
         projection: &math::Matrix4,
         view: &math::Matrix4,
         renderables: &[Renderable],
@@ -458,11 +442,12 @@ struct OpenGlShaderImpl {
     uniforms: IndexMap<String, Uniform>,
     draw: Draw,
 }
-impl OpenGlShaderImpl {
+impl OpenGlShader for OpenGlShaderImpl {
     fn render(&self) {
         unsafe {
-            gl::UseProgram(self.shader);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             gl::BindVertexArray(self.vao);
+            gl::UseProgram(self.shader);
             self.set_uniforms();
             match &self.draw {
                 Draw::Indices(i) => gl::DrawElements(gl::TRIANGLES, *i, gl::UNSIGNED_INT, null()),
@@ -470,6 +455,8 @@ impl OpenGlShaderImpl {
             }
         }
     }
+}
+impl OpenGlShaderImpl {
     fn set_uniforms(&self) {
         for (key, uniform) in &self.uniforms {
             uniform.set(self.shader, key);
@@ -497,28 +484,6 @@ enum Draw {
     Vertices(i32),
 }
 
-struct SkyboxShader<'a> {
-    view: &'a math::Matrix4,
-    projection: &'a math::Matrix4,
-    skybox: &'a Skybox,
-}
-impl<'a> OpenGlShader for SkyboxShader<'a> {
-    fn render(&self) {
-        unsafe {
-            let shader = self.skybox.shader;
-            gl::BindVertexArray(self.skybox.vao);
-            gl::UseProgram(shader);
-            gl_int_uniform(shader, self.skybox.image, "uSkybox");
-            gl_matrix_uniform(shader, self.view, "uView");
-            gl_matrix_uniform(shader, self.projection, "uProjection");
-            gl_float_uniform(shader, 2.2, "uGamma");
-            gl_float_uniform(shader, 0.1, "uExposure");
-            gl::DepthFunc(gl::LEQUAL);
-            gl::DrawArrays(gl::TRIANGLES, 0, Skybox::VERTICES.len() as i32);
-            gl::DepthFunc(gl::LESS);
-        }
-    }
-}
 struct ModelShader<'a> {
     projection: &'a math::Matrix4,
     view: &'a math::Matrix4,
@@ -886,6 +851,47 @@ impl Skybox {
         vec3!(-1.0, -1.0, 1.0),
         vec3!(1.0, -1.0, 1.0),
     ];
+
+    fn shader(&self, projection: math::Matrix4, view: math::Matrix4) -> SkyboxShaderImpl {
+        let view: math::Matrix4 = [
+            [view[0][0], view[0][1], view[0][2], 0.0],
+            [view[1][0], view[1][1], view[1][2], 0.0],
+            [view[2][0], view[2][1], view[2][2], 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+        .into();
+        SkyboxShaderImpl::new(self, projection, view)
+    }
+}
+pub struct SkyboxShaderImpl {
+    shader: OpenGlShaderImpl,
+}
+impl SkyboxShaderImpl {
+    pub fn new(skybox: &Skybox, projection: math::Matrix4, view: math::Matrix4) -> Self {
+        let uniforms = indexmap::indexmap! {
+            "uSkybox".into() => Uniform::Int(skybox.image),
+            "uView".into() => Uniform::Matrix4(view),
+            "uProjection".into() => Uniform::Matrix4(projection),
+            "uGamma".into() => Uniform::Float(2.2),
+            "uExposure".into() => Uniform::Float(0.1),
+        };
+        let shader = OpenGlShaderImpl {
+            vao: skybox.vao,
+            shader: skybox.shader,
+            uniforms,
+            draw: Draw::Vertices(Skybox::VERTICES.len() as i32),
+        };
+        Self { shader }
+    }
+}
+impl OpenGlShader for SkyboxShaderImpl {
+    fn render(&self) {
+        unsafe {
+            gl::DepthFunc(gl::LEQUAL);
+            self.shader.render();
+            gl::DepthFunc(gl::LESS);
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -42,18 +42,18 @@ fn main() {
     let mut renderer = gfx::opengl::OpenGlRenderer::init();
     set_skybox(&mut renderer);
     let pbr_program = gfx::opengl::OpenGlRenderer::compile_shader(&[
-        gfx::opengl::CompileShader::new(VERTEX_SHADER_PBR, gl::VERTEX_SHADER),
-        gfx::opengl::CompileShader::new(FRAGMENT_SHADER_PBR, gl::FRAGMENT_SHADER),
-        gfx::opengl::CompileShader::new(TONEMAPPING_SHADER, gl::FRAGMENT_SHADER),
+        gfx::opengl::ShaderSource::new(VERTEX_SHADER_PBR, gl::VERTEX_SHADER),
+        gfx::opengl::ShaderSource::new(FRAGMENT_SHADER_PBR, gl::FRAGMENT_SHADER),
+        gfx::opengl::ShaderSource::new(TONEMAPPING_SHADER, gl::FRAGMENT_SHADER),
     ])
     .expect("Failed to compile model shader");
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
     let collider = box_collider(0.1, 1.0, 0.1);
     let lines_program = gfx::opengl::OpenGlRenderer::compile_shader(&[
-        gfx::opengl::CompileShader::new(VERTEX_SHADER_LINE, gl::VERTEX_SHADER),
-        gfx::opengl::CompileShader::new(FRAGMENT_SHADER_LINE, gl::FRAGMENT_SHADER),
-        gfx::opengl::CompileShader::new(TONEMAPPING_SHADER, gl::FRAGMENT_SHADER),
+        gfx::opengl::ShaderSource::new(VERTEX_SHADER_LINE, gl::VERTEX_SHADER),
+        gfx::opengl::ShaderSource::new(FRAGMENT_SHADER_LINE, gl::FRAGMENT_SHADER),
+        gfx::opengl::ShaderSource::new(TONEMAPPING_SHADER, gl::FRAGMENT_SHADER),
     ])
     .expect("Failed to compile model shader");
     spawn_player(
@@ -99,9 +99,9 @@ fn set_skybox(renderer: &mut gfx::opengl::OpenGlRenderer) {
     let skybox = fs::read("./app/skybox.ibl").expect("failed to read skybox.ibl");
     let skybox = gfx::Ibl::deserialize(&skybox);
     let shader = gfx::opengl::OpenGlRenderer::compile_shader(&[
-        gfx::opengl::CompileShader::new(VERTEX_SHADER_SKYBOX, gl::VERTEX_SHADER),
-        gfx::opengl::CompileShader::new(FRAGMENT_SHADER_SKYBOX, gl::FRAGMENT_SHADER),
-        gfx::opengl::CompileShader::new(TONEMAPPING_SHADER, gl::FRAGMENT_SHADER),
+        gfx::opengl::ShaderSource::new(VERTEX_SHADER_SKYBOX, gl::VERTEX_SHADER),
+        gfx::opengl::ShaderSource::new(FRAGMENT_SHADER_SKYBOX, gl::FRAGMENT_SHADER),
+        gfx::opengl::ShaderSource::new(TONEMAPPING_SHADER, gl::FRAGMENT_SHADER),
     ])
     .unwrap();
     renderer.set_skybox(&skybox, shader);

@@ -24,14 +24,12 @@ uniform Material uMaterial;
 #define MAX_POINT_LIGHTS 64
 uniform int uPointLightsSize;
 uniform PointLight uPointLights[MAX_POINT_LIGHTS];
-// Vertex shader uniforms
-uniform mat4 uModel;
-uniform mat4 uView;
+
+uniform vec3 uLightPos; //TODO: use uPointLights
 
 in vec3 vFragPos;
 in vec3 vNormal;
 in vec2 vTexPos;
-in vec3 vLightPos;
 out vec4 fColor;
 
 vec3 calculateAmbience(vec3 albedo, float metallic, float roughness, float ao);
@@ -53,11 +51,7 @@ vec3 hdrToSdr(vec3 hdrColor);
 const float PI = 3.14159265;
 
 void main() {
-  //PointLight light = uPointLights[0];
-  //vec4 lightPos = uModel * uView * vec4(light.position, 1.0);
-  //float closestDepth = texture(uShadowMap, vec3(0.0, -1.0, 0.0)).r;
-  //closestDepth = closestDepth * 0.5 + 0.5 / 25.0;
-  //fColor = vec4(vec3(closestDepth), 25.0);
+  //fColor = vec4(vec3(shadow()), 25.0);
   //return;
   vec3 albedo = texture(uMaterial.albedo, vTexPos).rgb;
   float metallic = texture(uMaterial.metallicRoughnessAo, vTexPos).b;
@@ -160,9 +154,8 @@ float geometryGgx(vec3 normal, vec3 direction, float roughness) {
 }
 
 float shadow() {
-  vec3 fragToLight = vFragPos - vLightPos;
+  vec3 fragToLight = vFragPos - uLightPos;
   float closestDepth = texture(uShadowMap, fragToLight).r;
-  closestDepth *= 25.0;
   float currentDepth = length(fragToLight);
   float bias = 0.05;
   float shadow = currentDepth - bias > closestDepth ? 1.0 : 0.0;

@@ -11,7 +11,7 @@ void main() {
     gl_Layer = face;
     for (int i = 0; i < 3; i++) {
       FragPos = gl_in[i].gl_Position;
-      gl_Position = uShadowTransforms[i] * FragPos;
+      gl_Position = uShadowTransforms[face] * FragPos;
       EmitVertex();
     }
     EndPrimitive();

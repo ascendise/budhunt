@@ -560,6 +560,7 @@ impl ModelShader {
         shadow_map: Tex,
     ) -> Self {
         let model_matrix = transform.model_matrix();
+        let light_pos = view * model_matrix * ShadowShader::LIGHT_POS.into_vec();
         let mut uniforms = indexmap::indexmap! {
             "uView".into() => Uniform::Matrix4(view),
             "uProjection".into() => Uniform::Matrix4(projection),
@@ -572,6 +573,7 @@ impl ModelShader {
             "uIrradianceMap".into() => Uniform::Int(skybox.diffuse),
             "uPrefilterMap".into() => Uniform::Int(skybox.specular),
             "uBrdfLut".into() => Uniform::Int(skybox.brdf_lut),
+            "uLightPos".into() => Uniform::Vec3(light_pos.into_vec()), //TODO: pass light position
         };
         for (l, light) in lights.iter().enumerate() {
             let key = format!("uPointLights[{l}]");
@@ -631,15 +633,15 @@ struct ShadowShader {
 }
 impl ShadowShader {
     const FRUSTUM_FAR: f32 = 25.0;
+    const LIGHT_POS: math::Vec<3> = vec3!(0.0, 1.0, 0.0);
 
     pub fn new(config: ShadowShaderConfig, model: &ModelNode, transform: &Transform) -> Self {
-        const LIGHT_POS: math::Vec<3> = vec3!(0.0, 3.0, -1.5);
         let mut uniforms = indexmap::indexmap! {
             "uModel".into() => Uniform::Matrix4(transform.model_matrix()),
             "uFrustumFar".into() => Uniform::Float(Self::FRUSTUM_FAR),
-            "uLightPos".into() => Uniform::Vec3(LIGHT_POS), //TODO: pass light position
+            "uLightPos".into() => Uniform::Vec3(Self::LIGHT_POS), //TODO: pass light position
         };
-        Self::insert_shadow_transform_uniforms(&mut uniforms, &LIGHT_POS);
+        Self::insert_shadow_transform_uniforms(&mut uniforms, &Self::LIGHT_POS);
         let mut shader = OpenGlShaderImpl::new(
             model.vao,
             config.shader,

@@ -111,32 +111,35 @@ fn spawn_targets(
     renderer: &mut gfx::opengl::OpenGlRenderer,
     shader_program: u32,
     entities: &mut ace::Entities,
-) -> ace::physics::Collider {
+) {
     // Collider should be hitting player even if visible object is very high (for testing)
-    let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"))
+    //let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"))
+    let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./ace/src/gfx/tests/TestModel.glb"))
         .expect("Failed to load targets");
     let model = renderer.load_mesh(&mesh, shader_program);
     let targets = [
-        vec3!(0.0, 0.0, 0.0),
-        vec3!(2.0, 5.0, -15.0),
-        vec3!(-1.5, -2.2, -2.5),
-        vec3!(-3.8, -2.0, -12.3),
-        vec3!(2.4, -0.4, -3.5),
-        vec3!(-1.7, 3.0, 7.5),
-        vec3!(1.3, -2.0, -2.5),
-        vec3!(1.5, 2.0, -2.5),
-        vec3!(1.5, 0.2, -1.5),
-        vec3!(-1.3, 1.0, -1.5),
+        vec3!(0.0, 1.0, -2.0),
+        vec3!(0.0, 1.5, -7.0),
+        vec3!(0.0, 0.5, -12.0),
+        //vec3!(0.0, 0.0, 0.0),
+        //vec3!(2.0, 5.0, -15.0),
+        //vec3!(-1.5, -2.2, -2.5),
+        //vec3!(-3.8, -2.0, -12.3),
+        //vec3!(2.4, -0.4, -3.5),
+        //vec3!(-1.7, 3.0, 7.5),
+        //vec3!(1.3, -2.0, -2.5),
+        //vec3!(1.5, 2.0, -2.5),
+        //vec3!(1.5, 0.2, -1.5),
+        //vec3!(-1.3, 1.0, -1.5),
     ];
-    let collider =
-        ace::physics::Collider::new(metainfo.collider.expect("no collider found for Target.glb"));
+    //let collider =
+    //    ace::physics::Collider::new(metainfo.collider.expect("no collider found for Target.glb"));
     for target in targets {
         let position = ace::Components::Transform(ace::x3d::Transform::new(target));
-        let collider = ace::Components::Collider(collider.clone());
-        let components = vec![ace::Components::Model(model.clone()), position, collider];
+        //let collider = ace::Components::Collider(collider.clone());
+        let components = vec![ace::Components::Model(model.clone()), position]; //, collider];
         entities.create_entity(components);
     }
-    collider
 }
 
 fn spawn_point_lights(entities: &mut ace::Entities) {

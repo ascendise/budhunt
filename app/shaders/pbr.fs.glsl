@@ -18,6 +18,7 @@ struct BrdfResult {
 uniform sampler2D uIrradianceMap;
 uniform sampler2D uPrefilterMap;
 uniform sampler2D uBrdfLut;
+uniform sampler2D uGlobalShadowMap;
 uniform samplerCube uShadowMap;
 uniform Material uMaterial;
 
@@ -30,6 +31,7 @@ uniform vec3 uLightPos; //TODO: use uPointLights
 in vec3 vFragPos;
 in vec3 vNormal;
 in vec2 vTexPos;
+in vec3 vFragPosLightSpace;
 out vec4 fColor;
 
 vec3 calculateAmbience(vec3 albedo, float metallic, float roughness, float ao);
@@ -45,23 +47,24 @@ vec3 fresnel(float cosTheta, vec3 albedo, float metallic);
 float geometry(vec3 normal, vec3 viewDirection, vec3 lightDirection, float roughness);
 /// Schlick-GGX
 float geometryGgx(vec3 normal, vec3 direction, float roughness);
+float globalShadow();
 float shadow();
 vec3 hdrToSdr(vec3 hdrColor);
 
 const float PI = 3.14159265;
 
 void main() {
-  //fColor = vec4(vec3(shadow()), 25.0);
-  //return;
+  fColor = vec4(vec3(globalShadow()), 1.0);
+  return;
   vec3 albedo = texture(uMaterial.albedo, vTexPos).rgb;
   float metallic = texture(uMaterial.metallicRoughnessAo, vTexPos).b;
   float roughness = texture(uMaterial.metallicRoughnessAo, vTexPos).g;
   float ao = texture(uMaterial.metallicRoughnessAo, vTexPos).r;
   vec3 ambient = calculateAmbience(albedo, metallic, roughness, ao); //ambient too bright?
   vec3 radiance = calculateRadiance(albedo, metallic, roughness, ao);
-  vec3 color = ambient + shadow() * radiance;
+  vec3 color = ambient + radiance;
   color = hdrToSdr(color);
-  fColor = vec4(color, 1.0);
+  fColor = globalShadow() * vec4(color, 1.0);
 }
 
 const vec2 invAtan = vec2(0.1591, 0.3183);
@@ -151,6 +154,15 @@ float geometry(vec3 normal, vec3 viewDirection, vec3 lightDirection, float rough
 float geometryGgx(vec3 normal, vec3 direction, float roughness) {
   float alignment = max(dot(normal, direction), 0.0);
   return alignment / (alignment * (1.0 - roughness) + roughness);
+}
+
+float globalShadow() {
+  vec3 coords = vFragPosLightSpace;
+  coords = coords * 0.5 + 0.5;
+  float closestDepth = texture(uGlobalShadowMap, coords.xy).r;
+  return closestDepth;
+  float currentDepth = coords.z;
+  return currentDepth > closestDepth ? 1.0 : 0.0;
 }
 
 float shadow() {

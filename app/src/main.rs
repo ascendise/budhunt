@@ -215,7 +215,7 @@ fn spawn_player(
     player_script.set_bullet_shader(bullet_shader);
     let point = *metainfo.points.first().expect("muzzle point data missing");
     entities.create_entity(vec![
-        ace::Components::Transform(ace::x3d::Transform::new(vec3!(0.0, 0.0, 5.0))),
+        ace::Components::Transform(ace::x3d::Transform::new(vec3!(0.0, 0.0, 0.0))),
         //ace::Components::Position(vec3!(0.0, 0.0, -20.0)),
         ace::Components::Point(point),
         ace::Components::Scripts(vec![Box::new(player_script)]),

@@ -13,6 +13,7 @@ pub struct OpenGlRenderer {
     skybox: Option<Skybox>,
     line_vao: VertexArray,
     shadow_config: ShadowShaderConfig,
+    global_shadow_config: GlobalShadowShaderConfig,
 }
 impl Renderer for OpenGlRenderer {
     fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
@@ -34,7 +35,9 @@ impl Renderer for OpenGlRenderer {
         for model in &models {
             for node in &model.nodes {
                 let shadow_shader =
-                    ShadowShader::new(self.shadow_config.clone(), node, &model.transform);
+                    GlobalShadowShader::new(&self.global_shadow_config, node, &model.transform);
+                //ShadowShader::new(self.shadow_config.clone(), node, &model.transform);
+
                 shadow_shader.render();
             }
         }
@@ -48,6 +51,7 @@ impl Renderer for OpenGlRenderer {
                     &lights,
                     skybox,
                     self.shadow_config.texture,
+                    &self.global_shadow_config,
                 );
                 shader.render();
             }
@@ -70,6 +74,7 @@ impl OpenGlRenderer {
                 skybox: None,
                 line_vao,
                 shadow_config: ShadowShaderConfig::init(),
+                global_shadow_config: GlobalShadowShaderConfig::init(&vec3!(0.0, -1.0, 0.0)),
             }
         }
     }
@@ -558,6 +563,7 @@ impl ModelShader {
         lights: &[&Light],
         skybox: &Skybox,
         shadow_map: Tex,
+        global_shadow_config: &GlobalShadowShaderConfig,
     ) -> Self {
         let model_matrix = transform.model_matrix();
         let light_pos = view * model_matrix * ShadowShader::LIGHT_POS.into_vec();
@@ -574,6 +580,8 @@ impl ModelShader {
             "uPrefilterMap".into() => Uniform::Int(skybox.specular),
             "uBrdfLut".into() => Uniform::Int(skybox.brdf_lut),
             "uLightPos".into() => Uniform::Vec3(light_pos.into_vec()), //TODO: pass light position
+            "uLightSpaceTransform".into() => Uniform::Matrix4(global_shadow_config.light_space_transform),
+            "uGlobalShadowMap".into() => Uniform::Int(global_shadow_config.texture)
         };
         for (l, light) in lights.iter().enumerate() {
             let key = format!("uPointLights[{l}]");
@@ -594,6 +602,16 @@ impl ModelShader {
 
 struct LineShader {
     shader: OpenGlShaderImpl,
+}
+impl OpenGlShader for LineShader {
+    fn render(&self) {
+        unsafe {
+            gl::Enable(gl::LINE_SMOOTH);
+            gl::LineWidth(2.0);
+            self.shader.render();
+            gl::Disable(gl::LINE_SMOOTH);
+        }
+    }
 }
 impl LineShader {
     const COLOR_RED: math::Vec3 = vec3!(1.0, 0.0, 0.0);
@@ -618,22 +636,151 @@ impl LineShader {
         Self { shader }
     }
 }
-impl OpenGlShader for LineShader {
+
+struct GlobalShadowShader {
+    shader: OpenGlShaderImpl,
+}
+impl OpenGlShader for GlobalShadowShader {
     fn render(&self) {
         unsafe {
-            gl::Enable(gl::LINE_SMOOTH);
-            gl::LineWidth(2.0);
+            let mut params = [0; 4];
+            gl::GetIntegerv(gl::VIEWPORT, params.as_mut_ptr());
+            gl::Viewport(
+                0,
+                0,
+                ShadowShaderConfig::SHADOW_MAP_SIZE,
+                ShadowShaderConfig::SHADOW_MAP_SIZE,
+            );
             self.shader.render();
-            gl::Disable(gl::LINE_SMOOTH);
+            gl::Viewport(params[0], params[1], params[2], params[3]);
         }
+    }
+}
+impl GlobalShadowShader {
+    pub fn new(
+        config: &GlobalShadowShaderConfig,
+        model: &ModelNode,
+        model_transform: &Transform,
+    ) -> Self {
+        let uniforms = indexmap::indexmap! {
+            "uLightSpaceTransform".into() => Uniform::Matrix4(config.light_space_transform),
+            "uModel".into() => Uniform::Matrix4(model_transform.model_matrix())
+        };
+        let mut shader = OpenGlShaderImpl::new(
+            model.vao,
+            config.shader,
+            uniforms,
+            if model.indices > 0 {
+                Draw::Indices(model.indices)
+            } else {
+                Draw::Vertices(model.vertices)
+            },
+        );
+        shader.set_framebuffer(config.framebuffer);
+        Self { shader }
+    }
+}
+
+struct GlobalShadowShaderConfig {
+    shader: Shader,
+    framebuffer: Framebuffer,
+    texture: Tex,
+    light_space_transform: math::Matrix4,
+}
+impl GlobalShadowShaderConfig {
+    pub const SHADOW_VERTEX_SHADER: &str = include_str!("global_shadow.vs.glsl");
+    pub const SHADOW_FRAGMENT_SHADER: &str = include_str!("global_shadow.fs.glsl");
+    const NEAR_PLANE: f32 = 1.0;
+    const FAR_PLANE: f32 = 7.5;
+
+    pub fn init(light_direction: &math::Vec3) -> Self {
+        let (framebuffer, texture) = Self::init_shadow_map();
+        let config = Self {
+            shader: OpenGlRenderer::compile_shader(&[
+                ShaderSource::new(Self::SHADOW_VERTEX_SHADER, gl::VERTEX_SHADER),
+                ShaderSource::new(Self::SHADOW_FRAGMENT_SHADER, gl::FRAGMENT_SHADER),
+            ])
+            .expect("failed to compile global shadow shader"),
+            framebuffer,
+            texture,
+            light_space_transform: Self::get_light_space_transform(light_direction),
+        };
+        assert_no_ogl_error("~init()");
+        config
+    }
+
+    fn init_shadow_map() -> (Framebuffer, Tex) {
+        unsafe {
+            let mut framebuffer = 0;
+            gl::GenFramebuffers(1, &mut framebuffer);
+            let mut texture = 0;
+            gl::GenTextures(1, &mut texture);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            assert_no_ogl_error("ey");
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                gl::DEPTH_COMPONENT as i32,
+                ShadowShaderConfig::SHADOW_MAP_SIZE,
+                ShadowShaderConfig::SHADOW_MAP_SIZE,
+                0,
+                gl::DEPTH_COMPONENT,
+                gl::FLOAT,
+                null(),
+            );
+            assert_no_ogl_error("oi");
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer);
+            gl::FramebufferTexture2D(
+                gl::FRAMEBUFFER,
+                gl::DEPTH_ATTACHMENT,
+                gl::TEXTURE_2D,
+                texture,
+                0,
+            );
+            gl::DrawBuffer(gl::NONE);
+            gl::ReadBuffer(gl::NONE);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            (framebuffer, texture as i32)
+        }
+    }
+
+    fn get_light_space_transform(light_direction: &math::Vec3) -> math::Matrix4 {
+        let projection =
+            math::orthogonal(-10.0, 10.0, -10.0, 10.0, Self::NEAR_PLANE, Self::FAR_PLANE);
+        let view = math::look_at(
+            &-light_direction,
+            &vec3!(0.0, 0.0, 0.0),
+            &vec3!(0.0, 1.0, 0.0),
+        );
+        projection * view
     }
 }
 struct ShadowShader {
     shader: OpenGlShaderImpl,
 }
+impl OpenGlShader for ShadowShader {
+    fn render(&self) {
+        unsafe {
+            let mut params = [0; 4];
+            gl::GetIntegerv(gl::VIEWPORT, params.as_mut_ptr());
+            gl::Viewport(
+                0,
+                0,
+                ShadowShaderConfig::SHADOW_MAP_SIZE,
+                ShadowShaderConfig::SHADOW_MAP_SIZE,
+            );
+            self.shader.render();
+            gl::Viewport(params[0], params[1], params[2], params[3]);
+        }
+    }
+}
 impl ShadowShader {
     const FRUSTUM_FAR: f32 = 25.0;
-    const LIGHT_POS: math::Vec<3> = vec3!(0.0, 1.0, 0.0);
+    const LIGHT_POS: math::Vec3 = vec3!(0.0, 1.0, 0.0);
 
     pub fn new(config: ShadowShaderConfig, model: &ModelNode, transform: &Transform) -> Self {
         let mut uniforms = indexmap::indexmap! {
@@ -698,22 +845,6 @@ impl ShadowShader {
                 format!("uShadowTransforms[{m}]"),
                 Uniform::Matrix4(&projection * matrix),
             );
-        }
-    }
-}
-impl OpenGlShader for ShadowShader {
-    fn render(&self) {
-        unsafe {
-            let mut params = [0; 4];
-            gl::GetIntegerv(gl::VIEWPORT, params.as_mut_ptr());
-            gl::Viewport(
-                0,
-                0,
-                ShadowShaderConfig::SHADOW_MAP_SIZE,
-                ShadowShaderConfig::SHADOW_MAP_SIZE,
-            );
-            self.shader.render();
-            gl::Viewport(params[0], params[1], params[2], params[3]);
         }
     }
 }
@@ -875,6 +1006,15 @@ impl Skybox {
 struct SkyboxShader {
     shader: OpenGlShaderImpl,
 }
+impl OpenGlShader for SkyboxShader {
+    fn render(&self) {
+        unsafe {
+            gl::DepthFunc(gl::LEQUAL);
+            self.shader.render();
+            gl::DepthFunc(gl::LESS);
+        }
+    }
+}
 impl SkyboxShader {
     pub fn new(skybox: &Skybox, projection: math::Matrix4, view: math::Matrix4) -> Self {
         let uniforms = indexmap::indexmap! {
@@ -891,15 +1031,6 @@ impl SkyboxShader {
             Draw::Vertices(Skybox::VERTICES.len() as i32),
         );
         Self { shader }
-    }
-}
-impl OpenGlShader for SkyboxShader {
-    fn render(&self) {
-        unsafe {
-            gl::DepthFunc(gl::LEQUAL);
-            self.shader.render();
-            gl::DepthFunc(gl::LESS);
-        }
     }
 }
 

@@ -7,14 +7,17 @@ uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProjection;
 uniform mat4 uNormal;
+uniform mat4 uLightSpaceTransform;
 
 out vec3 vFragPos;
 out vec3 vNormal;
 out vec2 vTexPos;
+out vec3 vFragPosLightSpace;
 
 void main() {
   gl_Position = uProjection * uView * uModel * vec4(iPos, 1.0);
   vFragPos = vec3(uView * uModel * vec4(iPos, 1.0));
   vNormal = mat3(uNormal) * iNormal;
   vTexPos = iTexPos;
+  vFragPosLightSpace = vec3(uLightSpaceTransform * vec4(iPos, 1.0));
 }

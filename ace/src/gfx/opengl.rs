@@ -6,6 +6,8 @@ use std::{
     ptr::{null, null_mut},
 };
 
+use gl::DEPTH_BUFFER_BIT;
+
 use crate::gfx::*;
 
 pub struct OpenGlRenderer {
@@ -14,6 +16,7 @@ pub struct OpenGlRenderer {
     line_vao: VertexArray,
     shadow_config: ShadowShaderConfig,
     global_shadow_config: GlobalShadowShaderConfig,
+    debug_config: DebugTextureConfig,
 }
 impl Renderer for OpenGlRenderer {
     fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
@@ -41,23 +44,26 @@ impl Renderer for OpenGlRenderer {
                 shadow_shader.render();
             }
         }
-        for model in models {
-            for node in model.nodes {
-                let shader = ModelShader::new(
-                    &node,
-                    &model.transform,
-                    *projection,
-                    *view,
-                    &lights,
-                    skybox,
-                    self.shadow_config.texture,
-                    &self.global_shadow_config,
-                );
-                shader.render();
-            }
-        }
-        skybox.shader(*projection, *view).render();
-        self.render_lines(*projection, *view, renderables);
+        let texture = self.global_shadow_config.shadow_map;
+        let debug_render = DebugTextureShader::new(&self.debug_config, texture);
+        debug_render.render();
+        //for model in models {
+        //    for node in model.nodes {
+        //        let shader = ModelShader::new(
+        //            &node,
+        //            &model.transform,
+        //            *projection,
+        //            *view,
+        //            &lights,
+        //            skybox,
+        //            self.shadow_config.texture,
+        //            &self.global_shadow_config,
+        //        );
+        //        shader.render();
+        //    }
+        //}
+        //skybox.shader(*projection, *view).render();
+        //self.render_lines(*projection, *view, renderables);
     }
 }
 impl OpenGlRenderer {
@@ -74,7 +80,8 @@ impl OpenGlRenderer {
                 skybox: None,
                 line_vao,
                 shadow_config: ShadowShaderConfig::init(),
-                global_shadow_config: GlobalShadowShaderConfig::init(&vec3!(0.0, -1.0, 0.0)),
+                global_shadow_config: GlobalShadowShaderConfig::init(&-vec3!(2.0, -4.0, 1.0)),
+                debug_config: DebugTextureConfig::init(),
             }
         }
     }
@@ -440,6 +447,7 @@ impl ShaderSource {
     }
 }
 
+//TODO: move shaders into submodules
 trait OpenGlShader {
     fn render(&self);
 }
@@ -457,7 +465,7 @@ impl OpenGlShader for OpenGlShaderImpl {
             gl::BindVertexArray(self.vao);
             gl::UseProgram(self.shader);
             self.set_uniforms();
-            self.draw.draw();
+            self.draw.draw(); //TODO: SIGSEGV
         }
     }
 }
@@ -528,6 +536,7 @@ impl Uniform {
         unsafe { gl::GetUniformLocation(shader, key.as_ptr()) }
     }
 }
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 enum Draw {
     Indices(i32),
     Vertices(i32),
@@ -581,7 +590,7 @@ impl ModelShader {
             "uBrdfLut".into() => Uniform::Int(skybox.brdf_lut),
             "uLightPos".into() => Uniform::Vec3(light_pos.into_vec()), //TODO: pass light position
             "uLightSpaceTransform".into() => Uniform::Matrix4(global_shadow_config.light_space_transform),
-            "uGlobalShadowMap".into() => Uniform::Int(global_shadow_config.texture)
+            "uGlobalShadowMap".into() => Uniform::Int(global_shadow_config.shadow_map)
         };
         for (l, light) in lights.iter().enumerate() {
             let key = format!("uPointLights[{l}]");
@@ -651,6 +660,7 @@ impl OpenGlShader for GlobalShadowShader {
                 ShadowShaderConfig::SHADOW_MAP_SIZE,
                 ShadowShaderConfig::SHADOW_MAP_SIZE,
             );
+            gl::Clear(DEPTH_BUFFER_BIT);
             self.shader.render();
             gl::Viewport(params[0], params[1], params[2], params[3]);
         }
@@ -684,7 +694,7 @@ impl GlobalShadowShader {
 struct GlobalShadowShaderConfig {
     shader: Shader,
     framebuffer: Framebuffer,
-    texture: Tex,
+    shadow_map: Tex,
     light_space_transform: math::Matrix4,
 }
 impl GlobalShadowShaderConfig {
@@ -694,19 +704,17 @@ impl GlobalShadowShaderConfig {
     const FAR_PLANE: f32 = 7.5;
 
     pub fn init(light_direction: &math::Vec3) -> Self {
-        let (framebuffer, texture) = Self::init_shadow_map();
-        let config = Self {
+        let (framebuffer, shadow_map) = Self::init_shadow_map();
+        Self {
             shader: OpenGlRenderer::compile_shader(&[
                 ShaderSource::new(Self::SHADOW_VERTEX_SHADER, gl::VERTEX_SHADER),
                 ShaderSource::new(Self::SHADOW_FRAGMENT_SHADER, gl::FRAGMENT_SHADER),
             ])
             .expect("failed to compile global shadow shader"),
             framebuffer,
-            texture,
+            shadow_map,
             light_space_transform: Self::get_light_space_transform(light_direction),
-        };
-        assert_no_ogl_error("~init()");
-        config
+        }
     }
 
     fn init_shadow_map() -> (Framebuffer, Tex) {
@@ -716,7 +724,6 @@ impl GlobalShadowShaderConfig {
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_2D, texture);
-            assert_no_ogl_error("ey");
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,
@@ -728,7 +735,6 @@ impl GlobalShadowShaderConfig {
                 gl::FLOAT,
                 null(),
             );
-            assert_no_ogl_error("oi");
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
@@ -1031,6 +1037,88 @@ impl SkyboxShader {
             Draw::Vertices(Skybox::VERTICES.len() as i32),
         );
         Self { shader }
+    }
+}
+struct DebugTextureShader {
+    shader: OpenGlShaderImpl,
+}
+impl OpenGlShader for DebugTextureShader {
+    fn render(&self) {
+        self.shader.render();
+    }
+}
+impl DebugTextureShader {
+    pub fn new(config: &DebugTextureConfig, texture: Tex) -> Self {
+        let uniforms = indexmap::indexmap! {
+            "uTexture".into() => Uniform::Int(texture)
+        };
+        let shader = OpenGlShaderImpl::new(config.quad, config.shader, uniforms, config.draw);
+        Self { shader }
+    }
+}
+struct DebugTextureConfig {
+    quad: VertexArray,
+    shader: Shader,
+    draw: Draw,
+}
+impl DebugTextureConfig {
+    const QUAD_VERTICES: [f32; 24] = [
+        -1.0, 1.0, 0.0, 1.0, -1.0, -1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, 1.0,
+        -1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+    ];
+    const QUAD_VERTEX_COUNT: i32 = 6;
+    pub const DEBUG_TEX_VERTEX_SHADER: &str = include_str!("debug_tex.vs.glsl");
+    pub const DEBUG_TEX_FRAGMENT_SHADER: &str = include_str!("debug_tex.fs.glsl");
+
+    pub fn init() -> Self {
+        let quad = Self::create_vao();
+        let shader = OpenGlRenderer::compile_shader(&[
+            ShaderSource::new(Self::DEBUG_TEX_VERTEX_SHADER, gl::VERTEX_SHADER),
+            ShaderSource::new(Self::DEBUG_TEX_FRAGMENT_SHADER, gl::FRAGMENT_SHADER),
+        ])
+        .expect("failed to compile 'debug texture' shaders");
+        Self {
+            quad,
+            shader,
+            draw: Draw::Vertices(Self::QUAD_VERTEX_COUNT),
+        }
+    }
+
+    fn create_vao() -> VertexArray {
+        unsafe {
+            let mut vao = 0;
+            gl::GenVertexArrays(1, &mut vao);
+            gl::BindVertexArray(vao);
+            let mut buffer = 0;
+            gl::GenBuffers(1, &mut buffer);
+            gl::BindBuffer(gl::ARRAY_BUFFER, buffer);
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                size_of_val(&Self::QUAD_VERTICES) as isize,
+                Self::QUAD_VERTICES.as_ptr() as *const _,
+                gl::STATIC_DRAW,
+            );
+            gl::EnableVertexAttribArray(0);
+            gl::VertexAttribPointer(
+                0,
+                2,
+                gl::FLOAT,
+                gl::FALSE,
+                (size_of::<f32>() * 4) as i32,
+                null(),
+            );
+            gl::EnableVertexAttribArray(1);
+            gl::VertexAttribPointer(
+                1,
+                2,
+                gl::FLOAT,
+                gl::FALSE,
+                (size_of::<f32>() * 4) as i32,
+                (size_of::<f32>() * 2) as *const _,
+            );
+            assert_no_ogl_error("create vao");
+            vao
+        }
     }
 }
 

@@ -62,10 +62,15 @@ pub fn projection(fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Matrix4 {
 
 pub fn orthogonal(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Matrix4 {
     [
-        [2.0 / right - left, 0.0, 0.0, right + left / right - left],
-        [0.0, 2.0 / top - bottom, 0.0, top + bottom / top - bottom],
-        [0.0, 0.0, -2.0 / far - near, far + near / far - near],
-        [0.0, 0.0, 0.0, 1.0],
+        [2.0 / (right - left), 0.0, 0.0, 0.0],
+        [0.0, 2.0 / (top - bottom), 0.0, 0.0],
+        [0.0, 0.0, 2.0 / (far - near), 0.0],
+        [
+            (right + left) / (right - left),
+            (top + bottom) / (top - bottom),
+            (far + near) / (far - near),
+            1.0,
+        ],
     ]
     .into()
 }

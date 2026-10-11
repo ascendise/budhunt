@@ -134,6 +134,7 @@ impl DebugTextureShader {
         let uniforms = indexmap::indexmap! {
             "uTexture".into() => Uniform::Int(texture)
         };
+        println!("debug texture {}", texture);
         let shader = OpenGlShaderImpl::new(config.quad, config.shader, uniforms, config.draw);
         Self { shader }
     }
@@ -198,8 +199,96 @@ impl DebugTextureConfig {
                 (size_of::<f32>() * 4) as i32,
                 (size_of::<f32>() * 2) as *const _,
             );
-            assert_no_ogl_error("create vao");
             vao
         }
+    }
+}
+pub struct FooShader {
+    shader: OpenGlShaderImpl,
+}
+impl OpenGlShader for FooShader {
+    fn render(&self) {
+        self.shader.render()
+    }
+}
+impl FooShader {
+    pub fn new(config: &FooConfig) -> Self {
+        let uniforms = indexmap::indexmap! {
+            "uColor".into() => Uniform::Vec3(config.color)
+        };
+        let mut shader = OpenGlShaderImpl::new(
+            config.vao,
+            config.shader,
+            uniforms,
+            Draw::Vertices(DebugTextureConfig::QUAD_VERTEX_COUNT),
+        );
+        shader.set_framebuffer(config.framebuffer);
+        Self { shader }
+    }
+}
+pub struct FooConfig {
+    vao: VertexArray,
+    shader: Shader,
+    texture: Tex,
+    framebuffer: Framebuffer,
+    color: math::Vec3,
+}
+impl FooConfig {
+    pub const FOO_VERTEX_SHADER: &str = include_str!("foo.vs.glsl");
+    pub const FOO_FRAGMENT_SHADER: &str = include_str!("foo.fs.glsl");
+
+    pub fn init(color: math::Vec3) -> Self {
+        let (framebuffer, texture) = Self::init_texture();
+        Self {
+            vao: DebugTextureConfig::create_vao(),
+            shader: OpenGlRenderer::compile_shader(&[
+                ShaderSource::new(Self::FOO_VERTEX_SHADER, gl::VERTEX_SHADER),
+                ShaderSource::new(Self::FOO_FRAGMENT_SHADER, gl::FRAGMENT_SHADER),
+            ])
+            .expect("failed to compile global shadow shader"),
+            framebuffer,
+            texture,
+            color,
+        }
+    }
+
+    fn init_texture() -> (Framebuffer, Tex) {
+        unsafe {
+            let mut framebuffer = 0;
+            gl::GenFramebuffers(1, &mut framebuffer);
+            let mut texture = 0;
+            gl::GenTextures(1, &mut texture);
+            gl::ActiveTexture(gl::TEXTURE30);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                gl::RGB as i32,
+                1024,
+                1024,
+                0,
+                gl::RGB,
+                gl::FLOAT,
+                null(),
+            );
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer);
+            gl::FramebufferTexture2D(
+                gl::FRAMEBUFFER,
+                gl::COLOR_ATTACHMENT0,
+                gl::TEXTURE_2D,
+                texture,
+                0,
+            );
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            (framebuffer, texture as i32)
+        }
+    }
+
+    pub fn texture(&self) -> i32 {
+        self.texture
     }
 }

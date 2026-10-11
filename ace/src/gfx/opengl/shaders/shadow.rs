@@ -6,7 +6,7 @@ use crate::{
     gfx::{
         ModelNode, Shader, Tex,
         opengl::{
-            OpenGlRenderer, ShaderSource,
+            OpenGlRenderer, ShaderSource, assert_no_ogl_error,
             shaders::{Draw, Framebuffer, OpenGlShader, OpenGlShaderImpl, Uniform},
         },
     },
@@ -31,6 +31,7 @@ impl OpenGlShader for GlobalShadowShader {
             gl::Clear(gl::DEPTH_BUFFER_BIT);
             self.shader.render();
             gl::Viewport(params[0], params[1], params[2], params[3]);
+            assert_no_ogl_error("render global shadows");
         }
     }
 }
@@ -95,7 +96,7 @@ impl GlobalShadowShaderConfig {
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,
-                gl::RGB8 as i32,
+                gl::RGB as i32,
                 ShadowShaderConfig::SHADOW_MAP_SIZE,
                 ShadowShaderConfig::SHADOW_MAP_SIZE,
                 0,
@@ -115,8 +116,8 @@ impl GlobalShadowShaderConfig {
                 texture,
                 0,
             );
-            gl::DrawBuffer(gl::NONE);
-            gl::ReadBuffer(gl::NONE);
+            //gl::DrawBuffer(gl::NONE);
+            //gl::ReadBuffer(gl::NONE);
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             (framebuffer, texture as i32)
         }

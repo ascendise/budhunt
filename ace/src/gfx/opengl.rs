@@ -24,6 +24,7 @@ pub struct OpenGlRenderer {
     shadow_config: ShadowShaderConfig,
     global_shadow_config: GlobalShadowShaderConfig,
     debug_config: DebugTextureConfig,
+    foo_config: FooConfig,
 }
 impl Renderer for OpenGlRenderer {
     fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
@@ -47,12 +48,12 @@ impl Renderer for OpenGlRenderer {
                 let shadow_shader =
                     GlobalShadowShader::new(&self.global_shadow_config, node, &model.transform);
                 //ShadowShader::new(self.shadow_config.clone(), node, &model.transform);
-
-                shadow_shader.render();
+                //shadow_shader.render();
             }
         }
-        let texture = self.global_shadow_config.shadow_map();
-        let debug_render = DebugTextureShader::new(&self.debug_config, texture);
+        //let texture = self.global_shadow_config.shadow_map();
+        FooShader::new(&self.foo_config).render();
+        let debug_render = DebugTextureShader::new(&self.debug_config, self.foo_config.texture());
         debug_render.render();
         //for model in models {
         //    for node in model.nodes {
@@ -89,6 +90,7 @@ impl OpenGlRenderer {
                 shadow_config: ShadowShaderConfig::init(),
                 global_shadow_config: GlobalShadowShaderConfig::init(&vec3!(2.0, -4.0, 1.0)),
                 debug_config: DebugTextureConfig::init(),
+                foo_config: FooConfig::init(vec3!(1.0, 0.0, 0.0)),
             }
         }
     }

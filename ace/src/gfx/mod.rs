@@ -130,7 +130,7 @@ pub struct Projection {
 impl Projection {
     fn to_projection_matrix(&self) -> math::Matrix4 {
         let aspect_ratio = self.width / self.height;
-        math::projection(self.fov, aspect_ratio, self.near, self.far)
+        math::perspective(self.fov, aspect_ratio, self.near, self.far)
     }
 }
 

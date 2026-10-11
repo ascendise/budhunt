@@ -95,11 +95,11 @@ impl GlobalShadowShaderConfig {
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,
-                gl::DEPTH_COMPONENT as i32,
+                gl::RGB8 as i32,
                 ShadowShaderConfig::SHADOW_MAP_SIZE,
                 ShadowShaderConfig::SHADOW_MAP_SIZE,
                 0,
-                gl::DEPTH_COMPONENT,
+                gl::RGB,
                 gl::FLOAT,
                 null(),
             );
@@ -110,7 +110,7 @@ impl GlobalShadowShaderConfig {
             gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer);
             gl::FramebufferTexture2D(
                 gl::FRAMEBUFFER,
-                gl::DEPTH_ATTACHMENT,
+                gl::COLOR_ATTACHMENT0,
                 gl::TEXTURE_2D,
                 texture,
                 0,
@@ -124,7 +124,7 @@ impl GlobalShadowShaderConfig {
 
     fn get_light_space_transform(light_direction: &math::Vec3) -> math::Matrix4 {
         let projection =
-            math::orthogonal(-10.0, 10.0, -10.0, 10.0, Self::NEAR_PLANE, Self::FAR_PLANE);
+            math::orthographic(-10.0, 10.0, -10.0, 10.0, Self::NEAR_PLANE, Self::FAR_PLANE);
         let view = math::look_at(
             &-light_direction,
             &vec3!(0.0, 0.0, 0.0),
@@ -189,7 +189,7 @@ impl ShadowShader {
         uniforms: &mut IndexMap<String, Uniform>,
         light_position: &math::Vec3,
     ) {
-        let projection = math::projection(90.0, 1.0, 1.0, Self::FRUSTUM_FAR);
+        let projection = math::perspective(90.0, 1.0, 1.0, Self::FRUSTUM_FAR);
         let matrices = [
             math::look_at(
                 light_position,

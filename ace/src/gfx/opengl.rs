@@ -3,6 +3,7 @@ use std::{
     ffi::CString,
     fmt::Display,
     mem::offset_of,
+    ops::Neg,
     ptr::{null, null_mut},
 };
 
@@ -31,12 +32,6 @@ impl Renderer for OpenGlRenderer {
         }
         let projection = projection.to_projection_matrix();
         let view = camera.to_view_matrix();
-        //let projection = math::orthogonal(-10.0, 10.0, -10.0, 10.0, 1.0, 7.5);
-        //let view = math::look_at(
-        //    &vec3!(0.0, 10.0, 0.0),
-        //    &vec3!(0.0, 0.0, 0.0),
-        //    &vec3!(0.0, 1.0, 0.0),
-        //);
         let skybox = self.skybox.as_ref().expect("No skybox set!");
         let lights: Vec<&Light> = renderables
             .iter()
@@ -56,26 +51,26 @@ impl Renderer for OpenGlRenderer {
                 shadow_shader.render();
             }
         }
-        //let texture = self.global_shadow_config.shadow_map();
-        //let debug_render = DebugTextureShader::new(&self.debug_config, texture);
-        //debug_render.render();
-        for model in models {
-            for node in model.nodes {
-                let shader = ModelShader::new(
-                    &node,
-                    &model.transform,
-                    projection,
-                    view,
-                    &lights,
-                    skybox,
-                    self.shadow_config.texture(),
-                    &self.global_shadow_config,
-                );
-                shader.render();
-            }
-        }
-        skybox.shader(projection, view).render();
-        self.render_lines(projection, view, renderables);
+        let texture = self.global_shadow_config.shadow_map();
+        let debug_render = DebugTextureShader::new(&self.debug_config, texture);
+        debug_render.render();
+        //for model in models {
+        //    for node in model.nodes {
+        //        let shader = ModelShader::new(
+        //            &node,
+        //            &model.transform,
+        //            projection,
+        //            view,
+        //            &lights,
+        //            skybox,
+        //            self.shadow_config.texture(),
+        //            &self.global_shadow_config,
+        //        );
+        //        shader.render();
+        //    }
+        //}
+        //skybox.shader(projection, view).render();
+        //self.render_lines(projection, view, renderables);
     }
 }
 impl OpenGlRenderer {
@@ -92,7 +87,7 @@ impl OpenGlRenderer {
                 skybox: None,
                 line_vao,
                 shadow_config: ShadowShaderConfig::init(),
-                global_shadow_config: GlobalShadowShaderConfig::init(&-vec3!(0.0, -1.0, 0.0)),
+                global_shadow_config: GlobalShadowShaderConfig::init(&vec3!(2.0, -4.0, 1.0)),
                 debug_config: DebugTextureConfig::init(),
             }
         }

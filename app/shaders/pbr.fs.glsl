@@ -54,8 +54,8 @@ vec3 hdrToSdr(vec3 hdrColor);
 const float PI = 3.14159265;
 
 void main() {
-  fColor = vec4(vec3(globalShadow()), 1.0);
-  return;
+  //fColor = vec4(vec3(globalShadow()), 1.0);
+  //return;
   vec3 albedo = texture(uMaterial.albedo, vTexPos).rgb;
   float metallic = texture(uMaterial.metallicRoughnessAo, vTexPos).b;
   float roughness = texture(uMaterial.metallicRoughnessAo, vTexPos).g;
@@ -64,7 +64,8 @@ void main() {
   vec3 radiance = calculateRadiance(albedo, metallic, roughness, ao);
   vec3 color = ambient + radiance;
   color = hdrToSdr(color);
-  fColor = globalShadow() * vec4(color, 1.0);
+  //fColor = globalShadow() * vec4(color, 1.0);
+  fColor = vec4(color, 1.0);
 }
 
 const vec2 invAtan = vec2(0.1591, 0.3183);

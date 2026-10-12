@@ -3,14 +3,13 @@ use std::{
     ffi::CString,
     fmt::Display,
     mem::offset_of,
-    ops::Neg,
     ptr::{null, null_mut},
 };
 
 use crate::gfx::{
     opengl::shaders::{
         *,
-        {line::*, model::*, shadow::*, skybox::*},
+        {line::*, shadow::*, skybox::*},
     },
     *,
 };
@@ -31,10 +30,10 @@ impl Renderer for OpenGlRenderer {
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
-        let projection = projection.to_projection_matrix();
-        let view = camera.to_view_matrix();
-        let skybox = self.skybox.as_ref().expect("No skybox set!");
-        let lights: Vec<&Light> = renderables
+        let _projection = projection.to_projection_matrix();
+        let _view = camera.to_view_matrix();
+        let _skybox = self.skybox.as_ref().expect("No skybox set!");
+        let _lights: Vec<&Light> = renderables
             .iter()
             .filter_map(|m| maybe_component!(m, Renderable::Light))
             .collect();
@@ -45,7 +44,7 @@ impl Renderer for OpenGlRenderer {
             .collect();
         for model in &models {
             for node in &model.nodes {
-                let shadow_shader =
+                let _shadow_shader =
                     GlobalShadowShader::new(&self.global_shadow_config, node, &model.transform);
                 //ShadowShader::new(self.shadow_config.clone(), node, &model.transform);
                 //shadow_shader.render();

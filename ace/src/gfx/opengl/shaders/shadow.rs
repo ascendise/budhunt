@@ -55,7 +55,7 @@ impl GlobalShadowShader {
                 Draw::Vertices(model.vertices)
             },
         );
-        shader.set_framebuffer(config.framebuffer);
+        shader.set_framebuffer(config.framebuffer.name());
         Self { shader }
     }
 }
@@ -88,8 +88,7 @@ impl GlobalShadowShaderConfig {
 
     fn init_shadow_map() -> (Framebuffer, Tex) {
         unsafe {
-            let mut framebuffer = 0;
-            gl::GenFramebuffers(1, &mut framebuffer);
+            let framebuffer = Framebuffer::new();
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_2D, texture);
@@ -108,7 +107,7 @@ impl GlobalShadowShaderConfig {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer.name());
             gl::FramebufferTexture2D(
                 gl::FRAMEBUFFER,
                 gl::COLOR_ATTACHMENT0,
@@ -182,7 +181,7 @@ impl ShadowShader {
                 Draw::Vertices(model.vertices)
             },
         );
-        shader.set_framebuffer(config.buffer);
+        shader.set_framebuffer(config.buffer.name());
         Self { shader }
     }
 
@@ -231,7 +230,7 @@ impl ShadowShader {
         }
     }
 }
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ShadowShaderConfig {
     shader: Shader,
     buffer: Framebuffer,
@@ -259,10 +258,9 @@ impl ShadowShaderConfig {
         }
     }
 
-    fn create_shadow_map() -> (u32, Tex) {
+    fn create_shadow_map() -> (Framebuffer, Tex) {
         unsafe {
-            let mut buffer = 0;
-            gl::GenFramebuffers(1, &mut buffer);
+            let framebuffer = Framebuffer::new();
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_CUBE_MAP, texture);
@@ -270,7 +268,7 @@ impl ShadowShaderConfig {
                 let face = gl::TEXTURE_CUBE_MAP_POSITIVE_X + face;
                 Self::set_cubemap_tex(face);
             }
-            gl::BindFramebuffer(gl::FRAMEBUFFER, buffer);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer.name());
             gl::FramebufferTexture(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, texture, 0);
             gl::DrawBuffer(gl::NONE);
             gl::ReadBuffer(gl::NONE);
@@ -280,7 +278,7 @@ impl ShadowShaderConfig {
                 "Incomplete framebuffer: {framebuffer_err:x}"
             );
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            (buffer, texture as Tex)
+            (framebuffer, texture as Tex)
         }
     }
 

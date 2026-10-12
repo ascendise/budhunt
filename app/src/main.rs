@@ -114,7 +114,7 @@ fn spawn_targets(
 ) {
     // Collider should be hitting player even if visible object is very high (for testing)
     //let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"))
-    let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./ace/src/gfx/tests/TestModel.glb"))
+    let (mesh, _metainfo) = gfx::load_mesh_from_glb(Path::new("./ace/src/gfx/tests/TestModel.glb"))
         .expect("Failed to load targets");
     let model = renderer.load_mesh(&mesh, shader_program);
     let targets = [

@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     gfx::{
         Shader, Tex, VertexArray,
-        opengl::{OpenGlRenderer, ShaderSource, assert_no_ogl_error},
+        opengl::{OpenGlRenderer, ShaderSource},
     },
     math,
 };
@@ -23,7 +23,7 @@ pub struct OpenGlShaderImpl {
     shader: Shader,
     uniforms: IndexMap<String, Uniform>,
     draw: Draw,
-    framebuffer: Framebuffer,
+    framebuffer: u32,
 }
 impl OpenGlShader for OpenGlShaderImpl {
     fn render(&self) {
@@ -58,7 +58,7 @@ impl OpenGlShaderImpl {
         }
     }
 
-    fn set_framebuffer(&mut self, framebuffer: Framebuffer) {
+    fn set_framebuffer(&mut self, framebuffer: u32) {
         self.framebuffer = framebuffer;
     }
 }
@@ -120,7 +120,40 @@ impl Draw {
         }
     }
 }
-pub type Framebuffer = u32;
+#[derive(PartialEq, Eq, Debug)]
+pub struct Framebuffer {
+    name: u32,
+}
+impl Framebuffer {
+    pub const DISPLAY: u32 = 0;
+
+    pub fn new() -> Self {
+        unsafe {
+            let mut framebuffer = 0;
+            gl::GenFramebuffers(1, &mut framebuffer);
+            Self { name: framebuffer }
+        }
+    }
+
+    pub fn display() -> Self {
+        Self {
+            name: Framebuffer::DISPLAY,
+        }
+    }
+
+    pub fn name(&self) -> u32 {
+        self.name
+    }
+}
+impl Drop for Framebuffer {
+    fn drop(&mut self) {
+        if self.name == Framebuffer::DISPLAY {
+            return;
+        }
+        unsafe { gl::DeleteFramebuffers(1, self.name() as *const u32) }
+    }
+}
+
 pub struct DebugTextureShader {
     shader: OpenGlShaderImpl,
 }
@@ -222,7 +255,7 @@ impl FooShader {
             uniforms,
             Draw::Vertices(DebugTextureConfig::QUAD_VERTEX_COUNT),
         );
-        shader.set_framebuffer(config.framebuffer);
+        shader.set_framebuffer(config.framebuffer.name());
         Self { shader }
     }
 }
@@ -254,8 +287,7 @@ impl FooConfig {
 
     fn init_texture() -> (Framebuffer, Tex) {
         unsafe {
-            let mut framebuffer = 0;
-            gl::GenFramebuffers(1, &mut framebuffer);
+            let framebuffer = Framebuffer::new();
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
             gl::ActiveTexture(gl::TEXTURE30);
@@ -275,7 +307,7 @@ impl FooConfig {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer.name());
             gl::FramebufferTexture2D(
                 gl::FRAMEBUFFER,
                 gl::COLOR_ATTACHMENT0,

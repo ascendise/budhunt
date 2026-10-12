@@ -153,6 +153,77 @@ impl Drop for Framebuffer {
         unsafe { gl::DeleteFramebuffers(1, self.name() as *const u32) }
     }
 }
+pub struct Texture {
+    name: u32,
+    unit: u32,
+    buffer: Framebuffer,
+}
+impl Texture {
+    pub fn new(
+        unit: u32,
+        format: &TextureFormat,
+        params: &TextureParams,
+        buffer: Framebuffer,
+    ) -> Self {
+        unsafe {
+            let mut texture = 0;
+            gl::GenTextures(1, &mut texture);
+            gl::ActiveTexture(gl::TEXTURE0 + unit);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                format.internalformat,
+                format.width,
+                format.height,
+                0,
+                format.format,
+                gl::FLOAT,
+                null(),
+            );
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, params.min_filter);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, params.mag_filter);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, params.wrap_s);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, params.wrap_t);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, buffer.name());
+            gl::FramebufferTexture2D(
+                gl::FRAMEBUFFER,
+                gl::COLOR_ATTACHMENT0,
+                gl::TEXTURE_2D,
+                texture,
+                0,
+            );
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            Self {
+                name: texture,
+                unit,
+                buffer,
+            }
+        }
+    }
+
+    pub fn buffer(&self) -> &Framebuffer {
+        &self.buffer
+    }
+}
+pub struct TextureParams {
+    pub min_filter: gl::types::GLint,
+    pub mag_filter: gl::types::GLint,
+    pub wrap_s: gl::types::GLint,
+    pub wrap_t: gl::types::GLint,
+}
+
+pub struct TextureFormat {
+    pub internalformat: gl::types::GLint,
+    pub format: gl::types::GLenum,
+    pub width: gl::types::GLsizei,
+    pub height: gl::types::GLsizei,
+}
+impl Drop for Texture {
+    fn drop(&mut self) {
+        unsafe { gl::DeleteTextures(1, self.name as *const u32) }
+    }
+}
 
 pub struct DebugTextureShader {
     shader: OpenGlShaderImpl,

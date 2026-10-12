@@ -150,7 +150,7 @@ impl OpenGlRenderer {
             vao,
             indices: node.indices.len() as i32,
             shader,
-            material: Texture {
+            material: super::Texture {
                 albedo: albedo as i32,
                 metallic_roughness_ao: metallic_roughness_ao as i32,
             },

@@ -44,15 +44,17 @@ impl Renderer for OpenGlRenderer {
             .collect();
         for model in &models {
             for node in &model.nodes {
-                let _shadow_shader =
-                    GlobalShadowShader::new(&self.global_shadow_config, node, &model.transform);
+                //let _shadow_shader =
+                //    GlobalShadowShader::new(&self.global_shadow_config, node, &model.transform);
                 //ShadowShader::new(self.shadow_config.clone(), node, &model.transform);
                 //shadow_shader.render();
             }
         }
         //let texture = self.global_shadow_config.shadow_map();
-        FooShader::new(&self.foo_config).render();
-        let debug_render = DebugTextureShader::new(&self.debug_config, self.foo_config.texture());
+        let foo_shader = FooShader::new(&self.foo_config);
+        foo_shader.render();
+        let debug_render =
+            DebugTextureShader::new(&self.debug_config, self.foo_config.texture().clone());
         debug_render.render();
         //for model in models {
         //    for node in model.nodes {
@@ -83,13 +85,13 @@ impl OpenGlRenderer {
             gl::Enable(gl::FRAMEBUFFER_SRGB);
             let line_vao = Self::init_line();
             Self {
-                texture_count: 0,
+                texture_count: 3,
                 skybox: None,
                 line_vao,
-                shadow_config: ShadowShaderConfig::init(),
-                global_shadow_config: GlobalShadowShaderConfig::init(&vec3!(2.0, -4.0, 1.0)),
+                shadow_config: ShadowShaderConfig::init(0),
+                global_shadow_config: GlobalShadowShaderConfig::init(&vec3!(2.0, -4.0, 1.0), 1),
                 debug_config: DebugTextureConfig::init(),
-                foo_config: FooConfig::init(vec3!(1.0, 0.0, 0.0)),
+                foo_config: FooConfig::init(vec3!(1.0, 0.0, 0.0), 2),
             }
         }
     }

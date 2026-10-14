@@ -48,7 +48,7 @@ impl ModelShader {
             "uBrdfLut".into() => Uniform::Int(skybox.brdf_lut()),
             "uLightPos".into() => Uniform::Vec3(light_pos.into_vec()), //TODO: pass light position
             "uLightSpaceTransform".into() => Uniform::Matrix4(*global_shadow_config.light_space_transform()),
-            "uGlobalShadowMap".into() => Uniform::Int(global_shadow_config.shadow_map())
+            "uGlobalShadowMap".into() => Uniform::Int(global_shadow_config.shadow_map().name() as Tex)
         };
         for (l, light) in lights.iter().enumerate() {
             let key = format!("uPointLights[{l}]");

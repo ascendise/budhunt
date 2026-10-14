@@ -1,4 +1,4 @@
-use std::{ffi::CString, ptr::null};
+use std::{ffi::CString, ptr::null, sync::Arc};
 
 use indexmap::IndexMap;
 
@@ -23,12 +23,14 @@ pub struct OpenGlShaderImpl {
     shader: Shader,
     uniforms: IndexMap<String, Uniform>,
     draw: Draw,
-    framebuffer: u32,
+    render_target: Arc<Framebuffer>,
+    textures: Vec<Arc<Texture>>,
 }
 impl OpenGlShader for OpenGlShaderImpl {
     fn render(&self) {
         unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, self.framebuffer);
+            self.render_target.bind();
+            self.bind_textures();
             gl::BindVertexArray(self.vao);
             gl::UseProgram(self.shader);
             self.set_uniforms();
@@ -48,7 +50,8 @@ impl OpenGlShaderImpl {
             shader,
             draw,
             uniforms,
-            framebuffer: 0,
+            render_target: Arc::new(Framebuffer::DISPLAY),
+            textures: vec![],
         }
     }
 
@@ -58,8 +61,16 @@ impl OpenGlShaderImpl {
         }
     }
 
-    fn set_framebuffer(&mut self, framebuffer: u32) {
-        self.framebuffer = framebuffer;
+    fn set_render_target(&mut self, framebuffer: Arc<Framebuffer>) {
+        self.render_target = framebuffer;
+    }
+
+    fn set_textures(&mut self, textures: Vec<Arc<Texture>>) {
+        self.textures = textures;
+    }
+
+    fn bind_textures(&self) {
+        self.textures.iter().for_each(|t| t.bind());
     }
 }
 pub enum Uniform {
@@ -125,7 +136,10 @@ pub struct Framebuffer {
     name: u32,
 }
 impl Framebuffer {
-    pub const DISPLAY: u32 = 0;
+    const DISPLAY_NAME: u32 = 0;
+    pub const DISPLAY: Framebuffer = Framebuffer {
+        name: Self::DISPLAY_NAME,
+    };
 
     pub fn new() -> Self {
         unsafe {
@@ -135,35 +149,30 @@ impl Framebuffer {
         }
     }
 
-    pub fn display() -> Self {
-        Self {
-            name: Framebuffer::DISPLAY,
-        }
-    }
-
-    pub fn name(&self) -> u32 {
-        self.name
+    pub fn bind(&self) {
+        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, self.name) }
     }
 }
 impl Drop for Framebuffer {
     fn drop(&mut self) {
-        if self.name == Framebuffer::DISPLAY {
+        if self.name == Self::DISPLAY_NAME {
             return;
         }
-        unsafe { gl::DeleteFramebuffers(1, self.name() as *const u32) }
+        unsafe { gl::DeleteFramebuffers(1, self.name as *const u32) }
     }
 }
+#[derive(Debug, PartialEq, Eq)]
 pub struct Texture {
     name: u32,
     unit: u32,
-    buffer: Framebuffer,
+    buffer: Arc<Framebuffer>,
 }
 impl Texture {
     pub fn new(
         unit: u32,
         format: &TextureFormat,
         params: &TextureParams,
-        buffer: Framebuffer,
+        buffer: Arc<Framebuffer>,
     ) -> Self {
         unsafe {
             let mut texture = 0;
@@ -185,7 +194,7 @@ impl Texture {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, params.mag_filter);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, params.wrap_s);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, params.wrap_t);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, buffer.name());
+            gl::BindFramebuffer(gl::FRAMEBUFFER, buffer.name);
             gl::FramebufferTexture2D(
                 gl::FRAMEBUFFER,
                 gl::COLOR_ATTACHMENT0,
@@ -202,8 +211,28 @@ impl Texture {
         }
     }
 
-    pub fn buffer(&self) -> &Framebuffer {
+    pub fn bind(&self) {
+        unsafe {
+            gl::ActiveTexture(self.unit);
+            gl::BindTexture(gl::TEXTURE_2D, self.name);
+        }
+    }
+
+    pub fn name(&self) -> u32 {
+        self.name
+    }
+
+    pub fn unit(&self) -> u32 {
+        self.unit
+    }
+
+    pub fn buffer(&self) -> &Arc<Framebuffer> {
         &self.buffer
+    }
+}
+impl Drop for Texture {
+    fn drop(&mut self) {
+        unsafe { gl::DeleteTextures(1, self.name as *const u32) }
     }
 }
 pub struct TextureParams {
@@ -219,11 +248,6 @@ pub struct TextureFormat {
     pub width: gl::types::GLsizei,
     pub height: gl::types::GLsizei,
 }
-impl Drop for Texture {
-    fn drop(&mut self) {
-        unsafe { gl::DeleteTextures(1, self.name as *const u32) }
-    }
-}
 
 pub struct DebugTextureShader {
     shader: OpenGlShaderImpl,
@@ -234,12 +258,12 @@ impl OpenGlShader for DebugTextureShader {
     }
 }
 impl DebugTextureShader {
-    pub fn new(config: &DebugTextureConfig, texture: Tex) -> Self {
+    pub fn new(config: &DebugTextureConfig, texture: Arc<Texture>) -> Self {
         let uniforms = indexmap::indexmap! {
-            "uTexture".into() => Uniform::Int(texture)
+            "uTexture".into() => Uniform::Int(texture.name as Tex)
         };
-        println!("debug texture {}", texture);
-        let shader = OpenGlShaderImpl::new(config.quad, config.shader, uniforms, config.draw);
+        let mut shader = OpenGlShaderImpl::new(config.quad, config.shader, uniforms, config.draw);
+        shader.set_textures(vec![texture]);
         Self { shader }
     }
 }
@@ -326,72 +350,55 @@ impl FooShader {
             uniforms,
             Draw::Vertices(DebugTextureConfig::QUAD_VERTEX_COUNT),
         );
-        shader.set_framebuffer(config.framebuffer.name());
+        let buffer = config.texture.buffer().clone();
+        shader.set_render_target(buffer);
         Self { shader }
     }
 }
 pub struct FooConfig {
     vao: VertexArray,
     shader: Shader,
-    texture: Tex,
-    framebuffer: Framebuffer,
+    texture: Arc<Texture>,
     color: math::Vec3,
 }
 impl FooConfig {
     pub const FOO_VERTEX_SHADER: &str = include_str!("foo.vs.glsl");
     pub const FOO_FRAGMENT_SHADER: &str = include_str!("foo.fs.glsl");
+    pub const TEXTURE_SIZE: i32 = 1024;
 
-    pub fn init(color: math::Vec3) -> Self {
-        let (framebuffer, texture) = Self::init_texture();
+    pub fn init(color: math::Vec3, texture_unit: u32) -> Self {
+        let shader = OpenGlRenderer::compile_shader(&[
+            ShaderSource::new(Self::FOO_VERTEX_SHADER, gl::VERTEX_SHADER),
+            ShaderSource::new(Self::FOO_FRAGMENT_SHADER, gl::FRAGMENT_SHADER),
+        ])
+        .expect("failed to compile global shadow shader");
+        let framebuffer = Arc::new(Framebuffer::new());
+        let texture = Texture::new(
+            texture_unit,
+            &TextureFormat {
+                internalformat: gl::RGB as i32,
+                format: gl::RGB,
+                width: Self::TEXTURE_SIZE,
+                height: Self::TEXTURE_SIZE,
+            },
+            &TextureParams {
+                min_filter: gl::NEAREST as i32,
+                mag_filter: gl::NEAREST as i32,
+                wrap_s: gl::REPEAT as i32,
+                wrap_t: gl::REPEAT as i32,
+            },
+            framebuffer,
+        );
         Self {
             vao: DebugTextureConfig::create_vao(),
-            shader: OpenGlRenderer::compile_shader(&[
-                ShaderSource::new(Self::FOO_VERTEX_SHADER, gl::VERTEX_SHADER),
-                ShaderSource::new(Self::FOO_FRAGMENT_SHADER, gl::FRAGMENT_SHADER),
-            ])
-            .expect("failed to compile global shadow shader"),
-            framebuffer,
-            texture,
+            shader,
+            texture: Arc::new(texture),
             color,
         }
     }
 
-    fn init_texture() -> (Framebuffer, Tex) {
-        unsafe {
-            let framebuffer = Framebuffer::new();
-            let mut texture = 0;
-            gl::GenTextures(1, &mut texture);
-            gl::ActiveTexture(gl::TEXTURE30);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,
-                gl::RGB as i32,
-                1024,
-                1024,
-                0,
-                gl::RGB,
-                gl::FLOAT,
-                null(),
-            );
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer.name());
-            gl::FramebufferTexture2D(
-                gl::FRAMEBUFFER,
-                gl::COLOR_ATTACHMENT0,
-                gl::TEXTURE_2D,
-                texture,
-                0,
-            );
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            (framebuffer, texture as i32)
-        }
-    }
-
-    pub fn texture(&self) -> i32 {
-        self.texture
+    pub fn texture(&self) -> &Arc<Texture> {
+        //TODO: use reference in other ShaderConfigs too
+        &self.texture
     }
 }

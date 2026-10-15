@@ -8,6 +8,6 @@ out vec4 fColor;
 
 void main() {
   //float d = texture(uTexture, vTex).r;
-  vec3 v = texture(uTexture, vTex).xyz;
-  fColor = vec4(v, 1.0);
+  vec3 color = texture(uTexture, vTex).rgb;
+  fColor = vec4(color, 1.0);
 }

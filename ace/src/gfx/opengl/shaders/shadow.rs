@@ -219,7 +219,7 @@ impl ShadowShader {
         }
     }
 }
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ShadowShaderConfig {
     shader: Shader,
     buffer: Arc<Framebuffer>,

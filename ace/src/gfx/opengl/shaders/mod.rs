@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     gfx::{
         Shader, Tex, VertexArray,
-        opengl::{OpenGlRenderer, ShaderSource},
+        opengl::{OpenGlRenderer, ShaderSource, assert_no_ogl_error},
     },
     math,
 };
@@ -73,6 +73,7 @@ impl OpenGlShaderImpl {
         self.textures.iter().for_each(|t| t.bind());
     }
 }
+#[derive(PartialEq, Debug)]
 pub enum Uniform {
     Float(f32),
     Int(i32),
@@ -163,7 +164,7 @@ impl Drop for Framebuffer {
 }
 #[derive(Debug, PartialEq, Eq)]
 pub struct Texture {
-    name: u32,
+    name: Tex,
     unit: u32,
     buffer: Arc<Framebuffer>,
 }
@@ -174,10 +175,11 @@ impl Texture {
         params: &TextureParams,
         buffer: Arc<Framebuffer>,
     ) -> Self {
+        let unit = gl::TEXTURE0 + unit;
         unsafe {
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
-            gl::ActiveTexture(gl::TEXTURE0 + unit);
+            gl::ActiveTexture(unit);
             gl::BindTexture(gl::TEXTURE_2D, texture);
             gl::TexImage2D(
                 gl::TEXTURE_2D,
@@ -187,7 +189,7 @@ impl Texture {
                 format.height,
                 0,
                 format.format,
-                gl::FLOAT,
+                gl::UNSIGNED_BYTE,
                 null(),
             );
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, params.min_filter);
@@ -202,9 +204,9 @@ impl Texture {
                 texture,
                 0,
             );
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            gl::DrawBuffers(1, [gl::COLOR_ATTACHMENT0].as_ptr());
             Self {
-                name: texture,
+                name: texture as Tex,
                 unit,
                 buffer,
             }
@@ -214,11 +216,11 @@ impl Texture {
     pub fn bind(&self) {
         unsafe {
             gl::ActiveTexture(self.unit);
-            gl::BindTexture(gl::TEXTURE_2D, self.name);
+            gl::BindTexture(gl::TEXTURE_2D, self.name as u32);
         }
     }
 
-    pub fn name(&self) -> u32 {
+    pub fn name(&self) -> Tex {
         self.name
     }
 

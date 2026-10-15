@@ -64,7 +64,7 @@ void main() {
   vec3 radiance = calculateRadiance(albedo, metallic, roughness, ao);
   vec3 color = ambient + radiance;
   color = hdrToSdr(color);
-  //fColor = globalShadow() * vec4(color, 1.0);
+  fColor = globalShadow() * vec4(color, 1.0);
   fColor = vec4(color, 1.0);
 }
 

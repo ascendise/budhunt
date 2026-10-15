@@ -7,10 +7,7 @@ use std::{
 };
 
 use crate::gfx::{
-    opengl::shaders::{
-        *,
-        {line::*, shadow::*, skybox::*},
-    },
+    opengl::shaders::{line::*, model::ModelShader, shadow::*, skybox::*, *},
     *,
 };
 
@@ -30,13 +27,21 @@ impl Renderer for OpenGlRenderer {
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
-        let _projection = projection.to_projection_matrix();
-        let _view = camera.to_view_matrix();
-        let _skybox = self.skybox.as_ref().expect("No skybox set!");
-        let _lights: Vec<&Light> = renderables
+        let projection = projection.to_projection_matrix();
+        let view = camera.to_view_matrix();
+        let skybox = self.skybox.as_ref().expect("No skybox set!");
+        let lights: Vec<&Light> = renderables
             .iter()
             .filter_map(|m| maybe_component!(m, Renderable::Light))
             .collect();
+        //let foo_shader = FooShader::new(&self.foo_config);
+        //foo_shader.render();
+        //let debug_render =
+        //    DebugTextureShader::new(&self.debug_config, self.foo_config.texture().clone());
+        //assert_no_ogl_error("debug new");
+        //debug_render.render();
+        //assert_no_ogl_error("debug render");
+
         let models: Vec<Model> = renderables
             .iter()
             .filter_map(|m| maybe_component!(m, Renderable::Model))
@@ -44,35 +49,30 @@ impl Renderer for OpenGlRenderer {
             .collect();
         for model in &models {
             for node in &model.nodes {
-                //let _shadow_shader =
-                //    GlobalShadowShader::new(&self.global_shadow_config, node, &model.transform);
-                //ShadowShader::new(self.shadow_config.clone(), node, &model.transform);
-                //shadow_shader.render();
+                let shadow_shader =
+                    GlobalShadowShader::new(&self.global_shadow_config, node, &model.transform);
+                ShadowShader::new(self.shadow_config.clone(), node, &model.transform);
+                shadow_shader.render();
             }
         }
-        //let texture = self.global_shadow_config.shadow_map();
-        let foo_shader = FooShader::new(&self.foo_config);
-        foo_shader.render();
-        let debug_render =
-            DebugTextureShader::new(&self.debug_config, self.foo_config.texture().clone());
-        debug_render.render();
-        //for model in models {
-        //    for node in model.nodes {
-        //        let shader = ModelShader::new(
-        //            &node,
-        //            &model.transform,
-        //            projection,
-        //            view,
-        //            &lights,
-        //            skybox,
-        //            self.shadow_config.texture(),
-        //            &self.global_shadow_config,
-        //        );
-        //        shader.render();
-        //    }
-        //}
-        //skybox.shader(projection, view).render();
-        //self.render_lines(projection, view, renderables);
+        let texture = self.global_shadow_config.shadow_map();
+        for model in models {
+            for node in model.nodes {
+                let shader = ModelShader::new(
+                    &node,
+                    &model.transform,
+                    projection,
+                    view,
+                    &lights,
+                    skybox,
+                    self.shadow_config.texture().name() as Tex,
+                    &self.global_shadow_config,
+                );
+                shader.render();
+            }
+        }
+        skybox.shader(projection, view).render();
+        self.render_lines(projection, view, renderables);
     }
 }
 impl OpenGlRenderer {

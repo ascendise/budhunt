@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display, path::PathBuf, sync::Mutex};
 
-use crate::{x3d::Transform, *};
+use crate::{gfx::opengl::Idx, x3d::Transform, *};
 pub mod opengl;
 
 #[cfg(test)]
@@ -148,13 +148,12 @@ pub struct Model {
 pub type ModelNodes = Vec<ModelNode>;
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct ModelNode {
-    pub vao: VertexArray,
+    pub vao: Idx,
     pub shader: Shader,
     pub material: Texture,
     pub vertices: i32,
     pub indices: i32,
 }
-pub type VertexArray = u32;
 pub type Shader = u32;
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Texture {
@@ -403,7 +402,7 @@ pub struct Mesh {
 #[derive(Debug, Clone)]
 pub struct MeshNode {
     pub vertices: Vec<Vertex>,
-    pub indices: Vec<Index>,
+    pub indices: Vec<u32>,
     pub albedo: Image,
     pub metallic_roughness_ao: Image,
 }
@@ -414,9 +413,6 @@ pub struct Vertex {
     pub normal: math::Vec3,
     pub texture: math::Vec2,
 }
-
-/// Vertex index
-pub type Index = u32;
 
 const EMPTY_IMAGE: Image = Image {
     data: vec![],

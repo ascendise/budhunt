@@ -9,9 +9,10 @@ use std::{
 use crate::gfx::*;
 
 pub struct OpenGlRenderer {
+    state: State,
     texture_count: u32,
     skybox: Option<Skybox>,
-    line_vao: VertexArray,
+    line_vao: Idx,
 }
 impl Renderer for OpenGlRenderer {
     fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
@@ -30,6 +31,7 @@ impl Renderer for OpenGlRenderer {
             .cloned()
             .collect();
         let shader = ModelShader {
+            state: &self.state,
             projection,
             view,
             models: &models,
@@ -38,7 +40,7 @@ impl Renderer for OpenGlRenderer {
         };
         shader.render();
         self.render_skybox(projection, view);
-        self.render_lines(&camera.position, projection, view, renderables);
+        self.render_lines(projection, view, renderables);
     }
 }
 impl OpenGlRenderer {
@@ -49,8 +51,10 @@ impl OpenGlRenderer {
             gl::ClearColor(0.25, 0.25, 0.25, 1.0);
             gl::Enable(gl::DEPTH_TEST);
             gl::Enable(gl::FRAMEBUFFER_SRGB);
-            let line_vao = Self::init_line();
+            let mut state = State::new();
+            let line_vao = Self::init_line(&mut state);
             Self {
+                state,
                 texture_count: 0,
                 skybox: None,
                 line_vao,
@@ -58,32 +62,9 @@ impl OpenGlRenderer {
         }
     }
 
-    fn init_line() -> VertexArray {
-        unsafe {
-            let mut vertex_array = 0;
-            gl::GenVertexArrays(1, &mut vertex_array);
-            gl::BindVertexArray(vertex_array);
-            let mut buffer_object = 0;
-            gl::GenBuffers(1, &mut buffer_object);
-            gl::BindBuffer(gl::ARRAY_BUFFER, buffer_object);
-            let mesh_size = size_of_val(&Self::LINE) as isize;
-            gl::BufferData(
-                gl::ARRAY_BUFFER,
-                mesh_size,
-                Self::LINE.as_ptr() as *const _,
-                gl::STATIC_DRAW,
-            );
-            gl::VertexAttribPointer(
-                0,
-                3,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<math::Vec3>() as i32,
-                null(),
-            );
-            gl::EnableVertexAttribArray(0);
-            vertex_array
-        }
+    fn init_line(state: &mut State) -> Idx {
+        let vao = VertexArray::simple_new(&Self::LINE);
+        state.vertex_arrays.insert(vao)
     }
 
     pub fn set_polygon_mode(&self, mode: gl::types::GLenum) {
@@ -127,62 +108,14 @@ impl OpenGlRenderer {
         self.texture_count
     }
 
-    fn set_mesh_vao(&self, mesh: &MeshNode) -> u32 {
-        let mut vertex_array = 0;
-        unsafe {
-            gl::GenVertexArrays(1, &mut vertex_array);
-            gl::BindVertexArray(vertex_array);
-            let mut buffer_object = 0;
-            gl::GenBuffers(1, &mut buffer_object);
-            gl::BindBuffer(gl::ARRAY_BUFFER, buffer_object);
-            let mesh_size = (size_of::<Vertex>() * mesh.vertices.len()) as isize;
-            gl::BufferData(
-                gl::ARRAY_BUFFER,
-                mesh_size,
-                mesh.vertices.as_ptr() as *const _,
-                gl::STATIC_DRAW,
-            );
-            if !mesh.indices.is_empty() {
-                let mut ebo = 0u32;
-                gl::GenBuffers(1, &mut ebo);
-                gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
-                let indices_size = (size_of::<u32>() * mesh.indices.len()) as isize;
-                gl::BufferData(
-                    gl::ELEMENT_ARRAY_BUFFER,
-                    indices_size,
-                    mesh.indices.as_ptr() as *const _,
-                    gl::STATIC_DRAW,
-                );
-            }
-            gl::VertexAttribPointer(
-                0,
-                3,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<Vertex>() as i32,
-                offset_of!(Vertex, position) as *const _,
-            );
-            gl::EnableVertexAttribArray(0);
-            gl::VertexAttribPointer(
-                1,
-                3,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<Vertex>() as i32,
-                offset_of!(Vertex, normal) as *const _,
-            );
-            gl::EnableVertexAttribArray(1);
-            gl::VertexAttribPointer(
-                2,
-                2,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<Vertex>() as i32,
-                offset_of!(Vertex, texture) as *const _,
-            );
-            gl::EnableVertexAttribArray(2);
+    fn set_mesh_vao(&mut self, mesh: &MeshNode) -> usize {
+        let indices = if mesh.indices.is_empty() {
+            None
+        } else {
+            Some(&mesh.indices as &[u32])
         };
-        vertex_array
+        let vao = VertexArray::new(&mesh.vertices, indices);
+        self.state.vertex_arrays.insert(vao)
     }
 
     fn set_texture(
@@ -320,32 +253,10 @@ impl OpenGlRenderer {
         self.set_texture_with_mip_levels(specular, &skybox.specular, gl::RGB32F as i32, gl::RGB);
         let brdf_lut = self.new_tex();
         self.set_texture(brdf_lut, &skybox.brdf_lut, gl::RGB8 as i32, gl::RGB);
-        let mut vertex_array = 0;
-        unsafe {
-            gl::GenVertexArrays(1, &mut vertex_array);
-            gl::BindVertexArray(vertex_array);
-            let mut buffer_object = 0;
-            gl::GenBuffers(1, &mut buffer_object);
-            gl::BindBuffer(gl::ARRAY_BUFFER, buffer_object);
-            let mesh_size = (size_of::<math::Vec3>() * Skybox::VERTICES.len()) as isize;
-            gl::BufferData(
-                gl::ARRAY_BUFFER,
-                mesh_size,
-                Skybox::VERTICES.as_ptr() as *const _,
-                gl::STATIC_DRAW,
-            );
-            gl::VertexAttribPointer(
-                0,
-                3,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<math::Vec3>() as i32,
-                null() as *const _,
-            );
-            gl::EnableVertexAttribArray(0);
-        };
+        let vao = VertexArray::simple_new(&Skybox::VERTICES);
+        let vao = self.state.vertex_arrays.insert(vao);
         let skybox = Skybox {
-            vao: vertex_array,
+            vao,
             shader,
             image: image as i32,
             specular: specular as i32,
@@ -400,6 +311,7 @@ impl OpenGlRenderer {
         .into();
         if let Some(skybox) = &self.skybox {
             let skybox_shader = SkyboxShader {
+                state: &self.state,
                 view: &view,
                 projection,
                 skybox,
@@ -410,7 +322,6 @@ impl OpenGlRenderer {
 
     fn render_lines(
         &self,
-        _camera_position: &math::Vec3,
         projection: &math::Matrix4,
         view: &math::Matrix4,
         renderables: &[Renderable],
@@ -421,19 +332,190 @@ impl OpenGlRenderer {
             .cloned()
             .collect();
         let shader = LineShader {
+            vao: &self.state.vertex_arrays[self.line_vao],
             lines: &lines,
             projection,
             view,
-            line_vao: self.line_vao,
         };
         shader.render();
+    }
+}
+
+pub type Idx = usize;
+#[derive(Debug, PartialEq, Eq)]
+struct State {
+    vertex_arrays: StateCollection<VertexArray>,
+}
+impl State {
+    pub fn new() -> Self {
+        Self {
+            vertex_arrays: StateCollection::empty(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct StateCollection<T> {
+    values: indexmap::IndexMap<Idx, T>,
+    idx_count: Idx,
+}
+impl<T> StateCollection<T> {
+    pub fn empty() -> Self {
+        Self {
+            values: Default::default(),
+            idx_count: 0,
+        }
+    }
+
+    pub fn insert(&mut self, value: T) -> Idx {
+        let key = self.idx_count;
+        self.idx_count += 1;
+        self.values.insert(key, value);
+        key
+    }
+}
+
+impl<T> Index<Idx> for StateCollection<T> {
+    type Output = T;
+
+    fn index(&self, index: Idx) -> &Self::Output {
+        &self.values[index]
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct VertexArray(u32);
+impl VertexArray {
+    pub fn new(vertices: &[Vertex], indices: Option<&[u32]>) -> Self {
+        unsafe {
+            let mut vertex_array = 0;
+            gl::GenVertexArrays(1, &mut vertex_array);
+            gl::BindVertexArray(vertex_array);
+            let vertex_buffer = Self::create_vertex_buffer(vertices);
+            let element_buffer = indices.map(Self::create_element_array_buffer);
+            gl::BindVertexArray(0);
+            gl::DeleteBuffers(1, &vertex_buffer as *const u32);
+            if let Some(element_buffer) = element_buffer {
+                gl::DeleteBuffers(1, &element_buffer as *const u32);
+            }
+            Self(vertex_array)
+        }
+    }
+
+    fn create_vertex_buffer(vertices: &[Vertex]) -> u32 {
+        unsafe {
+            let mut buffer = 0;
+            gl::GenBuffers(1, &mut buffer);
+            gl::BindBuffer(gl::ARRAY_BUFFER, buffer);
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                size_of_val(vertices) as isize,
+                vertices.as_ptr() as *const _,
+                gl::STATIC_DRAW,
+            );
+            gl::VertexAttribPointer(
+                0,
+                3,
+                gl::FLOAT,
+                gl::FALSE,
+                size_of::<Vertex>() as i32,
+                offset_of!(Vertex, position) as *const _,
+            );
+            gl::EnableVertexAttribArray(0);
+            gl::VertexAttribPointer(
+                1,
+                3,
+                gl::FLOAT,
+                gl::FALSE,
+                size_of::<Vertex>() as i32,
+                offset_of!(Vertex, normal) as *const _,
+            );
+            gl::EnableVertexAttribArray(1);
+            gl::VertexAttribPointer(
+                2,
+                2,
+                gl::FLOAT,
+                gl::FALSE,
+                size_of::<Vertex>() as i32,
+                offset_of!(Vertex, texture) as *const _,
+            );
+            gl::EnableVertexAttribArray(2);
+            buffer
+        }
+    }
+
+    fn create_element_array_buffer(indices: &[u32]) -> u32 {
+        unsafe {
+            let mut ebo = 0u32;
+            gl::GenBuffers(1, &mut ebo);
+            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+            let indices_size = std::mem::size_of_val(indices) as isize;
+            gl::BufferData(
+                gl::ELEMENT_ARRAY_BUFFER,
+                indices_size,
+                indices.as_ptr() as *const _,
+                gl::STATIC_DRAW,
+            );
+            ebo
+        }
+    }
+
+    pub fn simple_new(vertices: &[math::Vec3]) -> Self {
+        unsafe {
+            let mut vertex_array = 0;
+            gl::GenVertexArrays(1, &mut vertex_array);
+            gl::BindVertexArray(vertex_array);
+            let vertex_buffer = Self::create_simple_vertex_buffer(vertices);
+            gl::BindVertexArray(0);
+            gl::DeleteBuffers(1, &vertex_buffer as *const u32);
+            Self(vertex_array)
+        }
+    }
+
+    fn create_simple_vertex_buffer(vertices: &[math::Vec3]) -> u32 {
+        unsafe {
+            let mut buffer = 0;
+            gl::GenBuffers(1, &mut buffer);
+            gl::BindBuffer(gl::ARRAY_BUFFER, buffer);
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                size_of_val(vertices) as isize,
+                vertices.as_ptr() as *const _,
+                gl::STATIC_DRAW,
+            );
+            gl::VertexAttribPointer(
+                0,
+                3,
+                gl::FLOAT,
+                gl::FALSE,
+                size_of::<math::Vec3>() as i32,
+                null(),
+            );
+            gl::EnableVertexAttribArray(0);
+            buffer
+        }
+    }
+
+    pub fn bind(&self) {
+        unsafe {
+            gl::BindVertexArray(self.0);
+        }
+    }
+}
+impl Drop for VertexArray {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteVertexArrays(1, &self.0 as *const u32);
+        }
     }
 }
 
 trait OpenGlShader {
     fn render(&self);
 }
+
 struct SkyboxShader<'a> {
+    state: &'a State,
     view: &'a math::Matrix4,
     projection: &'a math::Matrix4,
     skybox: &'a Skybox,
@@ -442,7 +524,7 @@ impl<'a> OpenGlShader for SkyboxShader<'a> {
     fn render(&self) {
         unsafe {
             let shader = self.skybox.shader;
-            gl::BindVertexArray(self.skybox.vao);
+            self.state.vertex_arrays[self.skybox.vao].bind();
             gl::UseProgram(shader);
             gl_int_uniform(shader, self.skybox.image, "uSkybox");
             gl_matrix_uniform(shader, self.view, "uView");
@@ -456,6 +538,7 @@ impl<'a> OpenGlShader for SkyboxShader<'a> {
     }
 }
 struct ModelShader<'a> {
+    state: &'a State,
     projection: &'a math::Matrix4,
     view: &'a math::Matrix4,
     models: &'a [Model],
@@ -467,7 +550,7 @@ impl<'a> OpenGlShader for ModelShader<'a> {
         unsafe {
             for model in self.models {
                 for node in &model.nodes {
-                    gl::BindVertexArray(node.vao);
+                    self.state.vertex_arrays[node.vao].bind();
                     gl::UseProgram(node.shader);
                     self.set_model_uniforms(node, &model.transform);
                     self.set_skybox_uniforms(node);
@@ -526,7 +609,7 @@ impl<'a> ModelShader<'a> {
 }
 struct LineShader<'a> {
     lines: &'a [Line],
-    line_vao: VertexArray,
+    vao: &'a VertexArray,
     projection: &'a math::Matrix4,
     view: &'a math::Matrix4,
 }
@@ -534,8 +617,8 @@ impl<'a> OpenGlShader for LineShader<'a> {
     fn render(&self) {
         unsafe {
             gl::Enable(gl::LINE_SMOOTH);
+            self.vao.bind();
             for line in self.lines {
-                gl::BindVertexArray(self.line_vao);
                 gl::UseProgram(line.shader);
                 gl_matrix_uniform(line.shader, self.projection, "uProjection");
                 gl_matrix_uniform(line.shader, self.view, "uView");
@@ -591,7 +674,7 @@ fn to_view_space(view: &math::Matrix4, vec: &math::Vec3) -> math::Vec3 {
 
 #[derive(Debug, Clone)]
 pub struct Skybox {
-    vao: VertexArray,
+    vao: Idx,
     shader: Shader,
     image: Tex,
     diffuse: Tex,

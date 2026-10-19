@@ -154,13 +154,13 @@ pub struct ModelNode {
     pub vertices: i32,
     pub indices: i32,
 }
+//TODO: refactor Shader/Program compilation
 pub type Shader = u32;
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Texture {
-    albedo: Tex,
-    metallic_roughness_ao: Tex,
+    albedo: Idx,
+    metallic_roughness_ao: Idx,
 }
-pub type Tex = i32;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Light {

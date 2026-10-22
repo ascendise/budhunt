@@ -8,7 +8,7 @@ use ace::{
 mod tests;
 
 pub struct PlayerScript {
-    bullet_shader: ace::gfx::Shader,
+    bullet_shader: ace::gfx::opengl::Idx,
     clock: Box<dyn ace::Clock>,
 }
 impl ace::Script for PlayerScript {
@@ -63,7 +63,7 @@ impl PlayerScript {
         }
     }
 
-    pub fn set_bullet_shader(&mut self, shader: ace::gfx::Shader) {
+    pub fn set_bullet_shader(&mut self, shader: ace::gfx::opengl::Idx) {
         self.bullet_shader = shader;
     }
 

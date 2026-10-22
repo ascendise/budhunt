@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display, path::PathBuf, sync::Mutex};
 
 use crate::{gfx::opengl::Idx, x3d::Transform, *};
+#[allow(unused)]
 pub mod opengl;
 
 #[cfg(test)]
@@ -96,7 +97,7 @@ impl RenderSystem {
         let shader = *component!(&line[Components::LINE], Components::Line);
         Line {
             transform: *transform,
-            shader,
+            program: shader,
         }
     }
 }
@@ -149,13 +150,11 @@ pub type ModelNodes = Vec<ModelNode>;
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct ModelNode {
     pub vao: Idx,
-    pub shader: Shader,
+    pub program: Idx,
     pub material: Texture,
     pub vertices: i32,
     pub indices: i32,
 }
-//TODO: refactor Shader/Program compilation
-pub type Shader = u32;
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Texture {
     albedo: Idx,
@@ -392,7 +391,7 @@ impl Display for LoadGlbError {
 #[derive(Debug, Clone)]
 pub struct Line {
     pub transform: Transform,
-    pub shader: Shader,
+    pub program: Idx,
 }
 
 pub struct Mesh {

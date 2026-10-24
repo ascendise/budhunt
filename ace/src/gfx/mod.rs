@@ -63,8 +63,8 @@ impl RenderSystem {
     fn handle_inputs(inputs: &[Input], projection: &mut gfx::Projection) {
         for input in inputs {
             if let Input::Scroll(scroll) = input {
-                let fov = projection.fov + math::radians(-scroll);
-                projection.fov = fov.clamp(Self::MIN_FOV, Self::MAX_FOV);
+                let fov = *projection.fov + math::radians(-scroll);
+                projection.fov = fov.clamp(Self::MIN_FOV, Self::MAX_FOV).into();
             }
         }
     }
@@ -108,16 +108,15 @@ pub trait Renderer {
 pub struct Projection {
     pub width: f32,
     pub height: f32,
-    // TODO: type for radians
     /// radians
-    pub fov: f32,
+    pub fov: math::Radians,
     pub near: f32,
     pub far: f32,
 }
 impl Projection {
     fn to_projection_matrix(&self) -> math::Matrix4 {
         let aspect_ratio = self.width / self.height;
-        math::projection(self.fov, aspect_ratio, self.near, self.far)
+        math::projection(*self.fov, aspect_ratio, self.near, self.far)
     }
 }
 

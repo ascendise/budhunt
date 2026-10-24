@@ -9,6 +9,7 @@ use std::{
 
 use crate::gfx::*;
 
+#[allow(unused, reason = "used for debugging/pinpointing OpenGL error cause")]
 macro_rules! assert_no_gl_error {
     // Is a macro so printed stack trace starts at the line the assert failed instead of at the assert function
     ($msg:literal) => {
@@ -92,19 +93,21 @@ impl OpenGlRenderer {
     }
 
     fn load_mesh_node(&mut self, node: &MeshNode, program: Idx) -> ModelNode {
-        let albedo = self.state.textures.insert(Texture::new(
+        let vao = self.set_mesh_vao(node);
+        let albedo = Texture::new(
             &node.albedo,
             gl::UNSIGNED_BYTE,
             &TextureFormat::SRGB_ALPHA,
             true,
-        ));
-        let metallic_roughness_ao = self.state.textures.insert(Texture::new(
+        );
+        let albedo = self.state.textures.insert(albedo);
+        let metallic_roughness_ao = Texture::new(
             &node.metallic_roughness_ao,
             gl::UNSIGNED_BYTE,
             &TextureFormat::RGB,
             true,
-        ));
-        let vao = self.set_mesh_vao(node);
+        );
+        let metallic_roughness_ao = self.state.textures.insert(metallic_roughness_ao);
         ModelNode {
             vao,
             indices: node.indices.as_ref().unwrap_or(&vec![]).len() as i32,
@@ -128,39 +131,12 @@ impl OpenGlRenderer {
         fragment_shader: &str,
         tonemap_shader: &str,
     ) -> Result<Idx, OpenGlError> {
-        unsafe {
-            let vertex_shader = Shader::compile(vertex_shader, gl::VERTEX_SHADER)?;
-            let fragment_shader = Shader::compile(fragment_shader, gl::FRAGMENT_SHADER)?;
-            let tonemap_shader = Shader::compile(tonemap_shader, gl::FRAGMENT_SHADER)?;
-            let program = Program::link(&[vertex_shader, fragment_shader, tonemap_shader])?;
-            let program = self.state.programs.insert(program);
-            Ok(program)
-        }
-    }
-
-    /// [Shader] needs to be freed using [gl::DeleteShader()]
-    unsafe fn compile(
-        shader_source: &str,
-        shader_type: gl::types::GLenum,
-    ) -> Result<gl::types::GLuint, OpenGlError> {
-        unsafe {
-            let shader_source =
-                CString::new(shader_source).expect("Could not convert shader source to CString");
-            let shader = gl::CreateShader(shader_type);
-            gl::ShaderSource(shader, 1, &shader_source.as_ptr(), null());
-            gl::CompileShader(shader);
-            let mut success = 0;
-            gl::GetShaderiv(shader, gl::COMPILE_STATUS, &mut success);
-            if success == 0 {
-                let mut err = ['\0' as i8; 512];
-                gl::GetShaderInfoLog(shader, 512, null_mut(), err.as_mut_ptr());
-                let err = String::from_utf8(err.iter().map(|c| *c as u8).collect()).unwrap();
-                let err = err.trim_end_matches('\0').to_string();
-                gl::DeleteShader(shader);
-                return Err(OpenGlError { err });
-            }
-            Ok(shader)
-        }
+        let vertex_shader = Shader::compile(vertex_shader, gl::VERTEX_SHADER)?;
+        let fragment_shader = Shader::compile(fragment_shader, gl::FRAGMENT_SHADER)?;
+        let tonemap_shader = Shader::compile(tonemap_shader, gl::FRAGMENT_SHADER)?;
+        let program = Program::link(&[vertex_shader, fragment_shader, tonemap_shader])?;
+        let program = self.state.programs.insert(program);
+        Ok(program)
     }
 
     pub fn set_skybox(&mut self, skybox: &gfx::Ibl, shader: Idx) {
@@ -568,9 +544,7 @@ impl Uniform {
         }
     }
 }
-fn subkey(key: &str, subkey: &str) -> String {
-    format!("{key}.{subkey}")
-}
+
 #[derive(Eq, Hash, PartialEq)]
 struct Location(gl::types::GLint);
 impl Location {
@@ -586,6 +560,7 @@ impl Location {
         }
     }
 }
+
 struct Shader(gl::types::GLuint);
 impl Shader {
     pub fn compile(source: &str, shader_type: gl::types::GLenum) -> Result<Self, OpenGlError> {
@@ -637,11 +612,9 @@ impl<'a> OpenGlShader for ModelShader<'a> {
         unsafe {
             for model in self.models {
                 for node in &model.nodes {
-                    let mut texture_count = Count::init();
                     self.state.vertex_arrays[node.vao].bind();
                     let program = &self.state.programs[node.program];
-                    let uniforms =
-                        self.get_model_shader_uniforms(program, node, model, texture_count);
+                    let uniforms = self.get_model_shader_uniforms(program, node, model);
                     program.use_and_set(&uniforms);
                     if node.indices > 0 {
                         gl::DrawElements(gl::TRIANGLES, node.indices, gl::UNSIGNED_INT, null());
@@ -663,17 +636,11 @@ impl<'a> ModelShader<'a> {
         program: &Program,
         node: &ModelNode,
         model: &Model,
-        mut texture_count: Count,
     ) -> IndexMap<Location, Uniform> {
         let mut uniforms = IndexMap::new();
-        self.add_model_uniforms(
-            program,
-            &mut uniforms,
-            node,
-            &model.transform,
-            &mut texture_count,
-        );
-        self.add_skybox_uniforms(program, &mut uniforms, node, &mut texture_count);
+        let mut texture_units = Count::init();
+        self.add_model_uniforms(&mut uniforms, node, &model.transform, &mut texture_units);
+        self.add_skybox_uniforms(&mut uniforms, node, &mut texture_units);
         let mut point_count = 0;
         for light in self.lights {
             match light {
@@ -701,11 +668,10 @@ impl<'a> ModelShader<'a> {
 
     fn add_model_uniforms(
         &self,
-        program: &Program,
         uniforms: &mut Uniforms,
         model: &ModelNode,
         transform: &Transform,
-        texture_count: &mut Count,
+        texture_units: &mut Count,
     ) {
         let program = &self.state.programs[model.program];
         uniforms.insert(
@@ -727,45 +693,44 @@ impl<'a> ModelShader<'a> {
             Uniform::Mat4(normal_matrix),
         );
         let albedo = &self.state.textures[model.material.albedo];
-        albedo.bind(texture_count.increment());
+        albedo.bind(texture_units.increment());
         uniforms.insert(
             program.location("uMaterial.albedo").unwrap(),
-            Uniform::Int(texture_count.last() as i32),
+            Uniform::Int(texture_units.last() as i32),
         );
         let metallic_roughness_ao = &self.state.textures[model.material.metallic_roughness_ao];
-        metallic_roughness_ao.bind(texture_count.increment());
+        metallic_roughness_ao.bind(texture_units.increment());
         uniforms.insert(
             program.location("uMaterial.metallicRoughnessAo").unwrap(),
-            Uniform::Int(texture_count.last() as i32),
+            Uniform::Int(texture_units.last() as i32),
         );
         uniforms.insert(program.location("uExposure").unwrap(), Uniform::Float(0.5));
     }
 
     fn add_skybox_uniforms(
         &self,
-        program: &Program,
         uniforms: &mut Uniforms,
         model: &ModelNode,
-        texture_count: &mut Count,
+        texture_units: &mut Count,
     ) {
         let program = &self.state.programs[model.program];
         let diffuse = &self.state.textures[self.skybox.diffuse];
-        diffuse.bind(texture_count.increment());
+        diffuse.bind(texture_units.increment());
         uniforms.insert(
             program.location("uIrradianceMap").unwrap(),
-            Uniform::Int(texture_count.last() as i32),
+            Uniform::Int(texture_units.last() as i32),
         );
         let specular = &self.state.textures[self.skybox.specular];
-        specular.bind(texture_count.increment());
+        specular.bind(texture_units.increment());
         uniforms.insert(
             program.location("uPrefilterMap").unwrap(),
-            Uniform::Int(texture_count.last() as i32),
+            Uniform::Int(texture_units.last() as i32),
         );
         let brdf_lut = &self.state.textures[self.skybox.brdf_lut];
-        brdf_lut.bind(texture_count.increment());
+        brdf_lut.bind(texture_units.increment());
         uniforms.insert(
             program.location("uBrdfLut").unwrap(),
-            Uniform::Int(texture_count.last() as i32),
+            Uniform::Int(texture_units.last() as i32),
         );
     }
 }

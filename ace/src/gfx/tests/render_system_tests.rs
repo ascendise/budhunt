@@ -7,7 +7,7 @@ fn setup(spy_renderer: &SpyRenderer) -> RenderSystem {
     let projection = Projection {
         width: 1280.0,
         height: 720.0,
-        fov: math::radians(45.0),
+        fov: math::Radians::from_degrees(45.0),
         near: 0.1,
         far: 100.0,
     };
@@ -113,7 +113,7 @@ pub fn render_should_change_fov_on_scroll(scroll: Input, expected_fov: f32) {
     sut.run(&mut entities, &events);
     // Assert
     let frame = spy.frame(0);
-    assert_float_eq!(expected_fov, frame.projection.fov);
+    assert_float_eq!(expected_fov, *frame.projection.fov);
 }
 
 #[test_case(Input::Scroll(-10.0), RenderSystem::MAX_FOV)]
@@ -131,5 +131,5 @@ pub fn render_should_clamp_fov_range(scroll: Input, expected_fov: f32) {
     sut.run(&mut entities, &events);
     // Assert
     let frame = spy.frame(0);
-    assert_float_eq!(expected_fov, frame.projection.fov);
+    assert_float_eq!(expected_fov, *frame.projection.fov);
 }

@@ -228,7 +228,7 @@ fn setup_world(
     let projection = gfx::Projection {
         width: width as f32,
         height: height as f32,
-        fov: math::radians(75.0),
+        fov: math::Radians::from_degrees(75.0),
         near: 0.1,
         far: 1000.0,
     };

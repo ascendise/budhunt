@@ -109,7 +109,7 @@ impl OpenGlRenderer {
             vao,
             indices: node.indices.as_ref().unwrap_or(&vec![]).len() as i32,
             program,
-            material: super::Texture {
+            material: super::Material {
                 albedo,
                 metallic_roughness_ao,
             },

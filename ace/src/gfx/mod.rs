@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display, path::PathBuf, sync::Mutex};
 
 use crate::{gfx::opengl::Idx, x3d::Transform, *};
-#[allow(unused)]
 pub mod opengl;
 
 #[cfg(test)]
@@ -109,6 +108,7 @@ pub trait Renderer {
 pub struct Projection {
     pub width: f32,
     pub height: f32,
+    // TODO: type for radians
     /// radians
     pub fov: f32,
     pub near: f32,
@@ -151,12 +151,12 @@ pub type ModelNodes = Vec<ModelNode>;
 pub struct ModelNode {
     pub vao: Idx,
     pub program: Idx,
-    pub material: Texture,
+    pub material: Material,
     pub vertices: i32,
     pub indices: i32,
 }
 #[derive(PartialEq, Debug, Clone, Copy)]
-pub struct Texture {
+pub struct Material {
     albedo: Idx,
     metallic_roughness_ao: Idx,
 }
@@ -171,13 +171,6 @@ impl Light {
             Light::Point(point_light) => point_light.position += position,
         }
     }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Material {
-    pub ambient: math::Vec3,
-    pub diffuse: math::Vec3,
-    pub specular: math::Vec3,
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -34,7 +34,7 @@ pub fn render_should_pass_objects_to_renderer_with_default_transform() {
     let expected_node = ModelNode {
         vao: 123,
         program: 123,
-        material: Texture {
+        material: Material {
             albedo: 0,
             metallic_roughness_ao: 0,
         },
@@ -72,7 +72,7 @@ pub fn render_should_transform_models_with_specific_transform() {
     let model = ModelNode {
         vao: 123,
         program: 123,
-        material: Texture {
+        material: Material {
             albedo: 0,
             metallic_roughness_ao: 0,
         },

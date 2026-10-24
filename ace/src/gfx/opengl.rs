@@ -110,13 +110,13 @@ impl OpenGlRenderer {
         let metallic_roughness_ao = self.state.textures.insert(metallic_roughness_ao);
         ModelNode {
             vao,
-            indices: node.indices.as_ref().unwrap_or(&vec![]).len() as i32,
+            indices: node.indices.as_ref().unwrap_or(&vec![]).len(),
             program,
             material: super::Material {
                 albedo,
                 metallic_roughness_ao,
             },
-            vertices: node.vertices.len() as i32,
+            vertices: node.vertices.len(),
         }
     }
 
@@ -617,9 +617,14 @@ impl<'a> OpenGlShader for ModelShader<'a> {
                     let uniforms = self.get_model_shader_uniforms(program, node, model);
                     program.use_and_set(&uniforms);
                     if node.indices > 0 {
-                        gl::DrawElements(gl::TRIANGLES, node.indices, gl::UNSIGNED_INT, null());
+                        gl::DrawElements(
+                            gl::TRIANGLES,
+                            node.indices as i32,
+                            gl::UNSIGNED_INT,
+                            null(),
+                        );
                     } else {
-                        gl::DrawArrays(gl::TRIANGLES, 0, node.vertices);
+                        gl::DrawArrays(gl::TRIANGLES, 0, node.vertices as i32);
                     }
                 }
             }

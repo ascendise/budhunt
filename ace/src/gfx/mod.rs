@@ -151,8 +151,8 @@ pub struct ModelNode {
     pub vao: Idx,
     pub program: Idx,
     pub material: Material,
-    pub vertices: i32,
-    pub indices: i32,
+    pub vertices: usize,
+    pub indices: usize,
 }
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Material {

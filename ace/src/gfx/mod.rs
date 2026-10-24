@@ -309,11 +309,13 @@ fn load_mesh_node(
         .into_f32()
         .collect();
     let vertices = read_vertices(positions, normals, tex_coords);
-    let indices: Vec<u32> = reader
-        .read_indices()
-        .expect("No indices found")
-        .into_u32()
-        .collect();
+    let indices = reader.read_indices();
+    let indices = if let Some(indices) = indices {
+        let vec: Vec<u32> = indices.into_u32().collect();
+        Some(vec)
+    } else {
+        None
+    };
     let material = primitive.material();
     let pbr = material.pbr_metallic_roughness();
     let albedo = pbr
@@ -401,7 +403,7 @@ pub struct Mesh {
 #[derive(Debug, Clone)]
 pub struct MeshNode {
     pub vertices: Vec<Vertex>,
-    pub indices: Vec<u32>,
+    pub indices: Option<Vec<u32>>,
     pub albedo: Image,
     pub metallic_roughness_ao: Image,
 }

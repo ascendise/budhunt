@@ -107,7 +107,7 @@ impl OpenGlRenderer {
         let vao = self.set_mesh_vao(node);
         ModelNode {
             vao,
-            indices: node.indices.len() as i32,
+            indices: node.indices.as_ref().unwrap_or(&vec![]).len() as i32,
             program,
             material: super::Texture {
                 albedo,
@@ -118,13 +118,7 @@ impl OpenGlRenderer {
     }
 
     fn set_mesh_vao(&mut self, mesh: &MeshNode) -> usize {
-        //TODO: make mesh.indices an Option<>
-        let indices = if mesh.indices.is_empty() {
-            None
-        } else {
-            Some(&mesh.indices as &[u32])
-        };
-        let vao = VertexArray::new(&mesh.vertices, indices);
+        let vao = VertexArray::new(&mesh.vertices, mesh.indices.as_deref());
         self.state.vertex_arrays.insert(vao)
     }
 

@@ -42,7 +42,10 @@ pub fn load_mesh_from_glb_should_load_valid_file_into_mesh() {
 
 fn assert_node_not_empty(node: &MeshNode) {
     assert!(!node.vertices.is_empty(), "No vertices loaded!");
-    assert!(!node.indices.is_empty(), "No indices loaded!");
+    assert!(
+        node.indices.is_some() && !node.indices.as_ref().unwrap().is_empty(),
+        "No indices loaded!"
+    );
 }
 
 #[test]

@@ -93,10 +93,10 @@ impl RenderSystem {
             line.get(Components::TRANSFORM),
             Some(Components::Transform) or &Default::default()
         );
-        let shader = *component!(&line[Components::LINE], Components::Line);
+        let program = *component!(&line[Components::LINE], Components::Line);
         Line {
             transform: *transform,
-            program: shader,
+            program,
         }
     }
 }
@@ -108,7 +108,6 @@ pub trait Renderer {
 pub struct Projection {
     pub width: f32,
     pub height: f32,
-    /// radians
     pub fov: math::Radians,
     pub near: f32,
     pub far: f32,

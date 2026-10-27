@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display, path::PathBuf, sync::Mutex};
 
-use crate::{x3d::Transform, *};
+use crate::{gfx::opengl::Idx, x3d::Transform, *};
 pub mod opengl;
 
 #[cfg(test)]
@@ -63,8 +63,8 @@ impl RenderSystem {
     fn handle_inputs(inputs: &[Input], projection: &mut gfx::Projection) {
         for input in inputs {
             if let Input::Scroll(scroll) = input {
-                let fov = projection.fov + math::radians(-scroll);
-                projection.fov = fov.clamp(Self::MIN_FOV, Self::MAX_FOV);
+                let fov = *projection.fov + math::radians(-scroll);
+                projection.fov = fov.clamp(Self::MIN_FOV, Self::MAX_FOV).into();
             }
         }
     }
@@ -93,10 +93,10 @@ impl RenderSystem {
             line.get(Components::TRANSFORM),
             Some(Components::Transform) or &Default::default()
         );
-        let shader = *component!(&line[Components::LINE], Components::Line);
+        let program = *component!(&line[Components::LINE], Components::Line);
         Line {
             transform: *transform,
-            shader,
+            program,
         }
     }
 }
@@ -108,15 +108,14 @@ pub trait Renderer {
 pub struct Projection {
     pub width: f32,
     pub height: f32,
-    /// radians
-    pub fov: f32,
+    pub fov: math::Radians,
     pub near: f32,
     pub far: f32,
 }
 impl Projection {
     fn to_projection_matrix(&self) -> math::Matrix4 {
         let aspect_ratio = self.width / self.height;
-        math::projection(self.fov, aspect_ratio, self.near, self.far)
+        math::projection(*self.fov, aspect_ratio, self.near, self.far)
     }
 }
 
@@ -148,20 +147,17 @@ pub struct Model {
 pub type ModelNodes = Vec<ModelNode>;
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct ModelNode {
-    pub vao: VertexArray,
-    pub shader: Shader,
-    pub material: Texture,
-    pub vertices: i32,
-    pub indices: i32,
+    pub vao: Idx,
+    pub program: Idx,
+    pub material: Material,
+    pub vertices: usize,
+    pub indices: usize,
 }
-pub type VertexArray = u32;
-pub type Shader = u32;
 #[derive(PartialEq, Debug, Clone, Copy)]
-pub struct Texture {
-    albedo: Tex,
-    metallic_roughness_ao: Tex,
+pub struct Material {
+    albedo: Idx,
+    metallic_roughness_ao: Idx,
 }
-pub type Tex = i32;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Light {
@@ -173,13 +169,6 @@ impl Light {
             Light::Point(point_light) => point_light.position += position,
         }
     }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Material {
-    pub ambient: math::Vec3,
-    pub diffuse: math::Vec3,
-    pub specular: math::Vec3,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -311,11 +300,13 @@ fn load_mesh_node(
         .into_f32()
         .collect();
     let vertices = read_vertices(positions, normals, tex_coords);
-    let indices: Vec<u32> = reader
-        .read_indices()
-        .expect("No indices found")
-        .into_u32()
-        .collect();
+    let indices = reader.read_indices();
+    let indices = if let Some(indices) = indices {
+        let vec: Vec<u32> = indices.into_u32().collect();
+        Some(vec)
+    } else {
+        None
+    };
     let material = primitive.material();
     let pbr = material.pbr_metallic_roughness();
     let albedo = pbr
@@ -393,7 +384,7 @@ impl Display for LoadGlbError {
 #[derive(Debug, Clone)]
 pub struct Line {
     pub transform: Transform,
-    pub shader: Shader,
+    pub program: Idx,
 }
 
 pub struct Mesh {
@@ -403,7 +394,7 @@ pub struct Mesh {
 #[derive(Debug, Clone)]
 pub struct MeshNode {
     pub vertices: Vec<Vertex>,
-    pub indices: Vec<Index>,
+    pub indices: Option<Vec<u32>>,
     pub albedo: Image,
     pub metallic_roughness_ao: Image,
 }
@@ -414,9 +405,6 @@ pub struct Vertex {
     pub normal: math::Vec3,
     pub texture: math::Vec2,
 }
-
-/// Vertex index
-pub type Index = u32;
 
 const EMPTY_IMAGE: Image = Image {
     data: vec![],

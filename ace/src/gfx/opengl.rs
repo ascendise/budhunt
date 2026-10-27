@@ -1,17 +1,29 @@
-use std::{
-    error::Error,
-    ffi::CString,
-    fmt::Display,
-    mem::offset_of,
-    ptr::{null, null_mut},
-};
+use indexmap::indexmap;
+use std::ptr::null;
 
-use crate::gfx::*;
+use crate::gfx::{opengl::state::*, *};
+
+pub use state::Idx;
+
+mod state;
+
+#[allow(unused, reason = "used for debugging/pinpointing OpenGL error cause")]
+macro_rules! assert_no_gl_error {
+    // Is a macro so printed stack trace starts at the line the assert failed instead of at the assert function
+    ($msg:literal) => {
+        unsafe {
+            let res = gl::GetError();
+            if res != 0 {
+                panic!("{} {res}", $msg)
+            }
+        }
+    };
+}
 
 pub struct OpenGlRenderer {
-    texture_count: u32,
+    state: State,
     skybox: Option<Skybox>,
-    line_vao: VertexArray,
+    line_vao: Idx,
 }
 impl Renderer for OpenGlRenderer {
     fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
@@ -30,6 +42,7 @@ impl Renderer for OpenGlRenderer {
             .cloned()
             .collect();
         let shader = ModelShader {
+            state: &self.state,
             projection,
             view,
             models: &models,
@@ -38,7 +51,7 @@ impl Renderer for OpenGlRenderer {
         };
         shader.render();
         self.render_skybox(projection, view);
-        self.render_lines(&camera.position, projection, view, renderables);
+        self.render_lines(projection, view, renderables);
     }
 }
 impl OpenGlRenderer {
@@ -49,41 +62,19 @@ impl OpenGlRenderer {
             gl::ClearColor(0.25, 0.25, 0.25, 1.0);
             gl::Enable(gl::DEPTH_TEST);
             gl::Enable(gl::FRAMEBUFFER_SRGB);
-            let line_vao = Self::init_line();
+            let mut state = State::new();
+            let line_vao = Self::init_line(&mut state);
             Self {
-                texture_count: 0,
+                state,
                 skybox: None,
                 line_vao,
             }
         }
     }
 
-    fn init_line() -> VertexArray {
-        unsafe {
-            let mut vertex_array = 0;
-            gl::GenVertexArrays(1, &mut vertex_array);
-            gl::BindVertexArray(vertex_array);
-            let mut buffer_object = 0;
-            gl::GenBuffers(1, &mut buffer_object);
-            gl::BindBuffer(gl::ARRAY_BUFFER, buffer_object);
-            let mesh_size = size_of_val(&Self::LINE) as isize;
-            gl::BufferData(
-                gl::ARRAY_BUFFER,
-                mesh_size,
-                Self::LINE.as_ptr() as *const _,
-                gl::STATIC_DRAW,
-            );
-            gl::VertexAttribPointer(
-                0,
-                3,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<math::Vec3>() as i32,
-                null(),
-            );
-            gl::EnableVertexAttribArray(0);
-            vertex_array
-        }
+    fn init_line(state: &mut State) -> Idx {
+        let vao = VertexArray::simple_new(&Self::LINE);
+        state.vertex_arrays.insert(vao)
     }
 
     pub fn set_polygon_mode(&self, mode: gl::types::GLenum) {
@@ -92,302 +83,88 @@ impl OpenGlRenderer {
         }
     }
 
-    pub fn load_mesh(&mut self, mesh: &Mesh, shader: Shader) -> ModelNodes {
+    pub fn load_mesh(&mut self, mesh: &Mesh, program: Idx) -> ModelNodes {
         mesh.nodes
             .iter()
-            .map(|n| self.load_mesh_node(n, shader))
+            .map(|n| self.load_mesh_node(n, program))
             .collect()
     }
 
-    fn load_mesh_node(&mut self, node: &MeshNode, shader: Shader) -> ModelNode {
-        let albedo = self.new_tex();
-        self.set_texture(albedo, &node.albedo, gl::SRGB_ALPHA as i32, gl::RGBA);
-        let metallic_roughness_ao = self.new_tex();
-        self.set_texture(
-            metallic_roughness_ao,
-            &node.metallic_roughness_ao,
-            gl::RGB8 as i32,
-            gl::RGB,
-        );
+    fn load_mesh_node(&mut self, node: &MeshNode, program: Idx) -> ModelNode {
         let vao = self.set_mesh_vao(node);
+        let albedo = Texture::new(
+            &node.albedo,
+            gl::UNSIGNED_BYTE,
+            &TextureFormat::SRGB_ALPHA,
+            true,
+        );
+        let albedo = self.state.textures.insert(albedo);
+        let metallic_roughness_ao = Texture::new(
+            &node.metallic_roughness_ao,
+            gl::UNSIGNED_BYTE,
+            &TextureFormat::RGB,
+            true,
+        );
+        let metallic_roughness_ao = self.state.textures.insert(metallic_roughness_ao);
         ModelNode {
             vao,
-            indices: node.indices.len() as i32,
-            shader,
-            material: Texture {
-                albedo: albedo as i32,
-                metallic_roughness_ao: metallic_roughness_ao as i32,
+            indices: node.indices.as_ref().unwrap_or(&vec![]).len(),
+            program,
+            material: super::Material {
+                albedo,
+                metallic_roughness_ao,
             },
-            vertices: node.vertices.len() as i32,
+            vertices: node.vertices.len(),
         }
     }
 
-    fn new_tex(&mut self) -> u32 {
-        self.texture_count += 1;
-        self.texture_count
-    }
-
-    fn set_mesh_vao(&self, mesh: &MeshNode) -> u32 {
-        let mut vertex_array = 0;
-        unsafe {
-            gl::GenVertexArrays(1, &mut vertex_array);
-            gl::BindVertexArray(vertex_array);
-            let mut buffer_object = 0;
-            gl::GenBuffers(1, &mut buffer_object);
-            gl::BindBuffer(gl::ARRAY_BUFFER, buffer_object);
-            let mesh_size = (size_of::<Vertex>() * mesh.vertices.len()) as isize;
-            gl::BufferData(
-                gl::ARRAY_BUFFER,
-                mesh_size,
-                mesh.vertices.as_ptr() as *const _,
-                gl::STATIC_DRAW,
-            );
-            if !mesh.indices.is_empty() {
-                let mut ebo = 0u32;
-                gl::GenBuffers(1, &mut ebo);
-                gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
-                let indices_size = (size_of::<u32>() * mesh.indices.len()) as isize;
-                gl::BufferData(
-                    gl::ELEMENT_ARRAY_BUFFER,
-                    indices_size,
-                    mesh.indices.as_ptr() as *const _,
-                    gl::STATIC_DRAW,
-                );
-            }
-            gl::VertexAttribPointer(
-                0,
-                3,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<Vertex>() as i32,
-                offset_of!(Vertex, position) as *const _,
-            );
-            gl::EnableVertexAttribArray(0);
-            gl::VertexAttribPointer(
-                1,
-                3,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<Vertex>() as i32,
-                offset_of!(Vertex, normal) as *const _,
-            );
-            gl::EnableVertexAttribArray(1);
-            gl::VertexAttribPointer(
-                2,
-                2,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<Vertex>() as i32,
-                offset_of!(Vertex, texture) as *const _,
-            );
-            gl::EnableVertexAttribArray(2);
-        };
-        vertex_array
-    }
-
-    fn set_texture(
-        &self,
-        unit: u32,
-        image: &Image,
-        internal_format: gl::types::GLint,
-        format: gl::types::GLenum,
-    ) {
-        let texture_unit = gl::TEXTURE0 + unit;
-        let mut texture = 0;
-        unsafe {
-            gl::GenTextures(1, &mut texture);
-            gl::ActiveTexture(texture_unit);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,
-                internal_format,
-                image.width as i32,
-                image.height as i32,
-                0,
-                format,
-                gl::UNSIGNED_BYTE,
-                image.data.as_ptr() as *const _,
-            );
-            gl::GenerateMipmap(gl::TEXTURE_2D);
-        }
-    }
-
-    fn set_texture_f32(
-        &self,
-        unit: u32,
-        image: &Image<f32>,
-        internal_format: gl::types::GLint,
-        format: gl::types::GLenum,
-    ) {
-        let texture_unit = gl::TEXTURE0 + unit;
-        let mut texture = 0;
-        unsafe {
-            gl::GenTextures(1, &mut texture);
-            gl::ActiveTexture(texture_unit);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,
-                internal_format,
-                image.width as i32,
-                image.height as i32,
-                0,
-                format,
-                gl::FLOAT,
-                image.data.as_ptr() as *const _,
-            );
-            gl::GenerateMipmap(gl::TEXTURE_2D);
-        }
+    fn set_mesh_vao(&mut self, mesh: &MeshNode) -> usize {
+        let vao = VertexArray::new(&mesh.vertices, mesh.indices.as_deref());
+        self.state.vertex_arrays.insert(vao)
     }
 
     pub fn compile_shader(
-        &self,
+        &mut self,
         vertex_shader: &str,
         fragment_shader: &str,
         tonemap_shader: &str,
-    ) -> Result<Shader, OpenGlError> {
-        unsafe {
-            let vertex_shader = Self::compile(vertex_shader, gl::VERTEX_SHADER)?;
-            let fragment_shader =
-                Self::compile(fragment_shader, gl::FRAGMENT_SHADER).inspect_err(|_| {
-                    gl::DeleteShader(vertex_shader);
-                })?;
-            let tonemap_shader =
-                Self::compile(tonemap_shader, gl::FRAGMENT_SHADER).inspect_err(|_| {
-                    gl::DeleteShader(vertex_shader);
-                    gl::DeleteShader(fragment_shader);
-                })?;
-            let shader_program = gl::CreateProgram();
-            gl::AttachShader(shader_program, vertex_shader);
-            gl::AttachShader(shader_program, fragment_shader);
-            gl::AttachShader(shader_program, tonemap_shader);
-            gl::LinkProgram(shader_program);
-            let mut success = 0;
-            gl::GetProgramiv(shader_program, gl::LINK_STATUS, &mut success);
-            if success == 0 {
-                let mut err = ['\0' as i8; 512];
-                gl::GetProgramInfoLog(shader_program, 512, null_mut(), err.as_mut_ptr());
-                let err = String::from_utf8(err.iter().map(|c| *c as u8).collect()).unwrap();
-                let err = err.trim_end_matches('\0').to_string();
-                gl::DeleteShader(tonemap_shader);
-                gl::DeleteShader(fragment_shader);
-                gl::DeleteShader(vertex_shader);
-                return Err(OpenGlError { err });
-            }
-            gl::DeleteShader(tonemap_shader);
-            gl::DeleteShader(fragment_shader);
-            gl::DeleteShader(vertex_shader);
-            Ok(shader_program)
-        }
+    ) -> Result<Idx, OpenGlError> {
+        let vertex_shader = Shader::compile(vertex_shader, gl::VERTEX_SHADER)?;
+        let fragment_shader = Shader::compile(fragment_shader, gl::FRAGMENT_SHADER)?;
+        let tonemap_shader = Shader::compile(tonemap_shader, gl::FRAGMENT_SHADER)?;
+        let program = Program::link(&[vertex_shader, fragment_shader, tonemap_shader])?;
+        let program = self.state.programs.insert(program);
+        Ok(program)
     }
 
-    /// [Shader] needs to be freed using [gl::DeleteShader()]
-    unsafe fn compile(
-        shader_source: &str,
-        shader_type: gl::types::GLenum,
-    ) -> Result<gl::types::GLuint, OpenGlError> {
-        unsafe {
-            let shader_source =
-                CString::new(shader_source).expect("Could not convert shader source to CString");
-            let shader = gl::CreateShader(shader_type);
-            gl::ShaderSource(shader, 1, &shader_source.as_ptr(), null());
-            gl::CompileShader(shader);
-            let mut success = 0;
-            gl::GetShaderiv(shader, gl::COMPILE_STATUS, &mut success);
-            if success == 0 {
-                let mut err = ['\0' as i8; 512];
-                gl::GetShaderInfoLog(shader, 512, null_mut(), err.as_mut_ptr());
-                let err = String::from_utf8(err.iter().map(|c| *c as u8).collect()).unwrap();
-                let err = err.trim_end_matches('\0').to_string();
-                gl::DeleteShader(shader);
-                return Err(OpenGlError { err });
-            }
-            Ok(shader)
-        }
-    }
-
-    pub fn set_skybox(&mut self, skybox: &gfx::Ibl, shader: Shader) {
-        let image = self.new_tex();
-        self.set_texture_f32(image, &skybox.skybox, gl::RGB32F as i32, gl::RGB);
-        unsafe {
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-        }
-        let diffuse = self.new_tex();
-        self.set_texture_f32(diffuse, &skybox.diffuse, gl::RGB32F as i32, gl::RGB);
-        let specular = self.new_tex();
-        self.set_texture_with_mip_levels(specular, &skybox.specular, gl::RGB32F as i32, gl::RGB);
-        let brdf_lut = self.new_tex();
-        self.set_texture(brdf_lut, &skybox.brdf_lut, gl::RGB8 as i32, gl::RGB);
-        let mut vertex_array = 0;
-        unsafe {
-            gl::GenVertexArrays(1, &mut vertex_array);
-            gl::BindVertexArray(vertex_array);
-            let mut buffer_object = 0;
-            gl::GenBuffers(1, &mut buffer_object);
-            gl::BindBuffer(gl::ARRAY_BUFFER, buffer_object);
-            let mesh_size = (size_of::<math::Vec3>() * Skybox::VERTICES.len()) as isize;
-            gl::BufferData(
-                gl::ARRAY_BUFFER,
-                mesh_size,
-                Skybox::VERTICES.as_ptr() as *const _,
-                gl::STATIC_DRAW,
-            );
-            gl::VertexAttribPointer(
-                0,
-                3,
-                gl::FLOAT,
-                gl::FALSE,
-                size_of::<math::Vec3>() as i32,
-                null() as *const _,
-            );
-            gl::EnableVertexAttribArray(0);
-        };
+    pub fn set_skybox(&mut self, skybox: &gfx::Ibl, shader: Idx) {
+        let image = Texture::new(&skybox.skybox, gl::FLOAT, &TextureFormat::RGB32F, true);
+        image.texture_filter(gl::LINEAR as i32, gl::LINEAR as i32);
+        let image = self.state.textures.insert(image);
+        let diffuse = Texture::new(&skybox.diffuse, gl::FLOAT, &TextureFormat::RGB32F, true);
+        let diffuse = self.state.textures.insert(diffuse);
+        let specular =
+            Texture::new_with_levels(&skybox.specular, gl::FLOAT, &TextureFormat::RGB32F);
+        specular.texture_filter(gl::LINEAR_MIPMAP_LINEAR as i32, gl::LINEAR as i32);
+        let specular = self.state.textures.insert(specular);
+        let brdf_lut = Texture::new(
+            &skybox.brdf_lut,
+            gl::UNSIGNED_BYTE,
+            &TextureFormat::RGB,
+            true,
+        );
+        let brdf_lut = self.state.textures.insert(brdf_lut);
+        let vao = VertexArray::simple_new(&Skybox::VERTICES);
+        let vao = self.state.vertex_arrays.insert(vao);
         let skybox = Skybox {
-            vao: vertex_array,
-            shader,
-            image: image as i32,
-            specular: specular as i32,
-            diffuse: diffuse as i32,
-            brdf_lut: brdf_lut as i32,
+            vao,
+            program: shader,
+            image,
+            specular,
+            diffuse,
+            brdf_lut,
         };
         self.skybox = Some(skybox);
-    }
-
-    fn set_texture_with_mip_levels(
-        &self,
-        unit: u32,
-        images: &[gfx::Image<f32>],
-        internal_format: gl::types::GLint,
-        format: gl::types::GLenum,
-    ) {
-        let texture_unit = gl::TEXTURE0 + unit;
-        let mut texture = 0;
-        unsafe {
-            gl::GenTextures(1, &mut texture);
-            gl::ActiveTexture(texture_unit);
-            gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::TexParameteri(
-                gl::TEXTURE_2D,
-                gl::TEXTURE_MIN_FILTER,
-                gl::LINEAR_MIPMAP_LINEAR as i32,
-            );
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-            for (i, image) in images.iter().enumerate() {
-                gl::TexImage2D(
-                    gl::TEXTURE_2D,
-                    i as i32,
-                    internal_format,
-                    image.width as i32,
-                    image.height as i32,
-                    0,
-                    format,
-                    gl::FLOAT,
-                    image.data.as_ptr() as *const _,
-                );
-            }
-        }
     }
 
     fn render_skybox(&self, projection: &math::Matrix4, view: &math::Matrix4) {
@@ -400,6 +177,7 @@ impl OpenGlRenderer {
         .into();
         if let Some(skybox) = &self.skybox {
             let skybox_shader = SkyboxShader {
+                state: &self.state,
                 view: &view,
                 projection,
                 skybox,
@@ -410,7 +188,6 @@ impl OpenGlRenderer {
 
     fn render_lines(
         &self,
-        _camera_position: &math::Vec3,
         projection: &math::Matrix4,
         view: &math::Matrix4,
         renderables: &[Renderable],
@@ -421,10 +198,11 @@ impl OpenGlRenderer {
             .cloned()
             .collect();
         let shader = LineShader {
+            state: &self.state,
+            vao: &self.state.vertex_arrays[self.line_vao],
             lines: &lines,
             projection,
             view,
-            line_vao: self.line_vao,
         };
         shader.render();
     }
@@ -433,29 +211,9 @@ impl OpenGlRenderer {
 trait OpenGlShader {
     fn render(&self);
 }
-struct SkyboxShader<'a> {
-    view: &'a math::Matrix4,
-    projection: &'a math::Matrix4,
-    skybox: &'a Skybox,
-}
-impl<'a> OpenGlShader for SkyboxShader<'a> {
-    fn render(&self) {
-        unsafe {
-            let shader = self.skybox.shader;
-            gl::BindVertexArray(self.skybox.vao);
-            gl::UseProgram(shader);
-            gl_int_uniform(shader, self.skybox.image, "uSkybox");
-            gl_matrix_uniform(shader, self.view, "uView");
-            gl_matrix_uniform(shader, self.projection, "uProjection");
-            gl_float_uniform(shader, 2.2, "uGamma");
-            gl_float_uniform(shader, 0.1, "uExposure");
-            gl::DepthFunc(gl::LEQUAL);
-            gl::DrawArrays(gl::TRIANGLES, 0, Skybox::VERTICES.len() as i32);
-            gl::DepthFunc(gl::LESS);
-        }
-    }
-}
+
 struct ModelShader<'a> {
+    state: &'a State,
     projection: &'a math::Matrix4,
     view: &'a math::Matrix4,
     models: &'a [Model],
@@ -467,30 +225,19 @@ impl<'a> OpenGlShader for ModelShader<'a> {
         unsafe {
             for model in self.models {
                 for node in &model.nodes {
-                    gl::BindVertexArray(node.vao);
-                    gl::UseProgram(node.shader);
-                    self.set_model_uniforms(node, &model.transform);
-                    self.set_skybox_uniforms(node);
-                    let mut point_count = 0;
-                    for light in self.lights {
-                        match light {
-                            Light::Point(light) => {
-                                let key = &format!("uPointLights[{point_count}]");
-                                gl_vec3_uniform(node.shader, &light.color, &subkey(key, "color"));
-                                gl_vec3_uniform(
-                                    node.shader,
-                                    &to_view_space(self.view, &light.position),
-                                    &subkey(key, "position"),
-                                );
-                                point_count += 1;
-                            }
-                        }
-                    }
-                    gl_int_uniform(node.shader, point_count, "uPointLightsSize");
+                    self.state.vertex_arrays[node.vao].bind();
+                    let program = &self.state.programs[node.program];
+                    let uniforms = self.get_model_shader_uniforms(program, node, model);
+                    program.use_and_set(&uniforms);
                     if node.indices > 0 {
-                        gl::DrawElements(gl::TRIANGLES, node.indices, gl::UNSIGNED_INT, null());
+                        gl::DrawElements(
+                            gl::TRIANGLES,
+                            node.indices as i32,
+                            gl::UNSIGNED_INT,
+                            null(),
+                        );
                     } else {
-                        gl::DrawArrays(gl::TRIANGLES, 0, node.vertices);
+                        gl::DrawArrays(gl::TRIANGLES, 0, node.vertices as i32);
                     }
                 }
             }
@@ -502,31 +249,139 @@ impl<'a> ModelShader<'a> {
         (model * view).inverse().transpose()
     }
 
-    fn set_model_uniforms(&self, model: &ModelNode, transform: &Transform) {
-        gl_matrix_uniform(model.shader, self.projection, "uProjection");
-        gl_matrix_uniform(model.shader, self.view, "uView");
-        let model_matrix = transform.model_matrix();
-        gl_matrix_uniform(model.shader, &model_matrix, "uModel");
-        let normal_matrix = Self::create_normal_matrix(&model_matrix, self.view);
-        gl_matrix_uniform(model.shader, &normal_matrix, "uNormal");
-        gl_int_uniform(model.shader, model.material.albedo, "uMaterial.albedo");
-        gl_int_uniform(
-            model.shader,
-            model.material.metallic_roughness_ao,
-            "uMaterial.metallicRoughnessAo",
+    fn get_model_shader_uniforms(
+        &self,
+        program: &Program,
+        node: &ModelNode,
+        model: &Model,
+    ) -> IndexMap<Location, Uniform> {
+        let mut uniforms = IndexMap::new();
+        let mut texture_units = Count::init();
+        self.add_model_uniforms(&mut uniforms, node, &model.transform, &mut texture_units);
+        self.add_skybox_uniforms(&mut uniforms, node, &mut texture_units);
+        let mut point_count = 0;
+        for light in self.lights {
+            match light {
+                Light::Point(light) => {
+                    let key = &format!("uPointLights[{point_count}]");
+                    uniforms.insert(
+                        program.location(&format!("{key}.color")).unwrap(),
+                        Uniform::Vec3(light.color),
+                    );
+                    let position = to_view_space(self.view, &light.position);
+                    uniforms.insert(
+                        program.location(&format!("{key}.position")).unwrap(),
+                        Uniform::Vec3(position),
+                    );
+                    point_count += 1;
+                }
+            }
+        }
+        uniforms.insert(
+            program.location("uPointLightsSize").unwrap(),
+            Uniform::Int(point_count),
         );
-        gl_float_uniform(model.shader, 0.5, "uExposure");
+        uniforms
     }
 
-    fn set_skybox_uniforms(&self, model: &ModelNode) {
-        gl_int_uniform(model.shader, self.skybox.diffuse, "uIrradianceMap");
-        gl_int_uniform(model.shader, self.skybox.specular, "uPrefilterMap");
-        gl_int_uniform(model.shader, self.skybox.brdf_lut, "uBrdfLut");
+    fn add_model_uniforms(
+        &self,
+        uniforms: &mut Uniforms,
+        model: &ModelNode,
+        transform: &Transform,
+        texture_units: &mut Count,
+    ) {
+        let program = &self.state.programs[model.program];
+        uniforms.insert(
+            program.location("uProjection").unwrap(),
+            Uniform::Mat4(*self.projection),
+        );
+        uniforms.insert(
+            program.location("uView").unwrap(),
+            Uniform::Mat4(*self.view),
+        );
+        let model_matrix = transform.model_matrix();
+        uniforms.insert(
+            program.location("uModel").unwrap(),
+            Uniform::Mat4(model_matrix),
+        );
+        let normal_matrix = Self::create_normal_matrix(&model_matrix, self.view);
+        uniforms.insert(
+            program.location("uNormal").unwrap(),
+            Uniform::Mat4(normal_matrix),
+        );
+        let albedo = &self.state.textures[model.material.albedo];
+        albedo.bind(texture_units.increment());
+        uniforms.insert(
+            program.location("uMaterial.albedo").unwrap(),
+            Uniform::Int(texture_units.last() as i32),
+        );
+        let metallic_roughness_ao = &self.state.textures[model.material.metallic_roughness_ao];
+        metallic_roughness_ao.bind(texture_units.increment());
+        uniforms.insert(
+            program.location("uMaterial.metallicRoughnessAo").unwrap(),
+            Uniform::Int(texture_units.last() as i32),
+        );
+        uniforms.insert(program.location("uExposure").unwrap(), Uniform::Float(0.5));
+    }
+
+    fn add_skybox_uniforms(
+        &self,
+        uniforms: &mut Uniforms,
+        model: &ModelNode,
+        texture_units: &mut Count,
+    ) {
+        let program = &self.state.programs[model.program];
+        let diffuse = &self.state.textures[self.skybox.diffuse];
+        diffuse.bind(texture_units.increment());
+        uniforms.insert(
+            program.location("uIrradianceMap").unwrap(),
+            Uniform::Int(texture_units.last() as i32),
+        );
+        let specular = &self.state.textures[self.skybox.specular];
+        specular.bind(texture_units.increment());
+        uniforms.insert(
+            program.location("uPrefilterMap").unwrap(),
+            Uniform::Int(texture_units.last() as i32),
+        );
+        let brdf_lut = &self.state.textures[self.skybox.brdf_lut];
+        brdf_lut.bind(texture_units.increment());
+        uniforms.insert(
+            program.location("uBrdfLut").unwrap(),
+            Uniform::Int(texture_units.last() as i32),
+        );
+    }
+}
+struct SkyboxShader<'a> {
+    state: &'a State,
+    view: &'a math::Matrix4,
+    projection: &'a math::Matrix4,
+    skybox: &'a Skybox,
+}
+impl<'a> OpenGlShader for SkyboxShader<'a> {
+    fn render(&self) {
+        unsafe {
+            self.state.vertex_arrays[self.skybox.vao].bind();
+            let skybox = &self.state.textures[self.skybox.image];
+            skybox.bind(0);
+            let program = &self.state.programs[self.skybox.program];
+            program.use_and_set(&indexmap! {
+                program.location("uSkybox").unwrap() => Uniform::Int(self.skybox.image as i32),
+                program.location("uView").unwrap() => Uniform::Mat4(*self.view),
+                program.location("uProjection").unwrap() => Uniform::Mat4(*self.projection),
+                program.location("uGamma").unwrap() => Uniform::Float(2.2),
+                program.location("uExposure").unwrap() => Uniform::Float(0.1),
+            });
+            gl::DepthFunc(gl::LEQUAL);
+            gl::DrawArrays(gl::TRIANGLES, 0, Skybox::VERTICES.len() as i32);
+            gl::DepthFunc(gl::LESS);
+        }
     }
 }
 struct LineShader<'a> {
+    state: &'a State,
     lines: &'a [Line],
-    line_vao: VertexArray,
+    vao: &'a VertexArray,
     projection: &'a math::Matrix4,
     view: &'a math::Matrix4,
 }
@@ -534,15 +389,17 @@ impl<'a> OpenGlShader for LineShader<'a> {
     fn render(&self) {
         unsafe {
             gl::Enable(gl::LINE_SMOOTH);
+            self.vao.bind();
             for line in self.lines {
-                gl::BindVertexArray(self.line_vao);
-                gl::UseProgram(line.shader);
-                gl_matrix_uniform(line.shader, self.projection, "uProjection");
-                gl_matrix_uniform(line.shader, self.view, "uView");
+                let program = &self.state.programs[line.program];
                 let model_matrix =
                     math::Matrix4::translation(&line.transform.position) * line.transform.rotation;
-                gl_matrix_uniform(line.shader, &model_matrix, "uModel");
-                gl_vec3_uniform(line.shader, &vec3!(1.0, 0.0, 0.0), "uColor");
+                program.use_and_set(&indexmap! {
+                    program.location("uProjection").unwrap() => Uniform::Mat4(*self.projection),
+                    program.location("uView").unwrap() => Uniform::Mat4(*self.view),
+                    program.location("uModel").unwrap() => Uniform::Mat4(model_matrix),
+                    program.location("uColor").unwrap() => Uniform::Vec3(vec3!(1.0, 0.0, 0.0))
+                });
                 gl::LineWidth(2.0);
                 gl::DrawArrays(gl::LINES, 0, Self::LINE_VERTICES_LEN);
             }
@@ -555,48 +412,19 @@ impl<'a> LineShader<'a> {
     pub const LINE_VERTICES_LEN: i32 = 2;
 }
 
-fn gl_matrix_uniform(shader: Shader, matrix: &math::Matrix4, key: &str) {
-    let location = gl_get_uniform_location(shader, key);
-    unsafe { gl::UniformMatrix4fv(location, 1, gl::TRUE, matrix.data.as_ptr() as *const _) }
-}
-
-fn gl_vec3_uniform(shader: Shader, value: &math::Vec3, key: &str) {
-    let location = gl_get_uniform_location(shader, key);
-    unsafe { gl::Uniform3f(location, value.x(), value.y(), value.z()) }
-}
-
-fn gl_int_uniform(shader: Shader, value: i32, key: &str) {
-    let location = gl_get_uniform_location(shader, key);
-    unsafe { gl::Uniform1i(location, value) }
-}
-
-fn gl_float_uniform(shader: Shader, value: f32, key: &str) {
-    let location = gl_get_uniform_location(shader, key);
-    unsafe { gl::Uniform1f(location, value) }
-}
-
-fn gl_get_uniform_location(shader: Shader, key: &str) -> gl::types::GLint {
-    let key = CString::new(key).unwrap();
-    unsafe { gl::GetUniformLocation(shader, key.as_ptr()) }
-}
-
-fn subkey(key: &str, subkey: &str) -> String {
-    format!("{key}.{subkey}")
-}
-
 fn to_view_space(view: &math::Matrix4, vec: &math::Vec3) -> math::Vec3 {
     let res = view * vec.into_vec_with(1.0);
     res.into_vec()
 }
 
 #[derive(Debug, Clone)]
-pub struct Skybox {
-    vao: VertexArray,
-    shader: Shader,
-    image: Tex,
-    diffuse: Tex,
-    specular: Tex,
-    brdf_lut: Tex,
+struct Skybox {
+    vao: Idx,
+    program: Idx,
+    image: Idx,
+    diffuse: Idx,
+    specular: Idx,
+    brdf_lut: Idx,
 }
 impl Skybox {
     pub const VERTICES: [math::Vec3; 36] = [
@@ -637,15 +465,4 @@ impl Skybox {
         vec3!(-1.0, -1.0, 1.0),
         vec3!(1.0, -1.0, 1.0),
     ];
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct OpenGlError {
-    err: String,
-}
-impl Error for OpenGlError {}
-impl Display for OpenGlError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.err)
-    }
 }

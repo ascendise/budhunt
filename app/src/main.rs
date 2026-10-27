@@ -104,7 +104,7 @@ fn set_skybox(renderer: &mut gfx::opengl::OpenGlRenderer) {
 
 fn spawn_targets(
     renderer: &mut gfx::opengl::OpenGlRenderer,
-    shader_program: u32,
+    shader_program: gfx::opengl::Idx,
     entities: &mut ace::Entities,
 ) -> ace::physics::Collider {
     // Collider should be hitting player even if visible object is very high (for testing)
@@ -169,7 +169,7 @@ fn create_point_light(position: math::Vec3) -> gfx::PointLight {
 
 fn spawn_floor(
     renderer: &mut gfx::opengl::OpenGlRenderer,
-    shader_program: u32,
+    shader_program: gfx::opengl::Idx,
     entities: &mut ace::Entities,
 ) {
     let (mut plane_mesh, _) =
@@ -194,8 +194,8 @@ fn spawn_floor(
 
 fn spawn_player(
     renderer: &mut gfx::opengl::OpenGlRenderer,
-    pbr_shader: gfx::Shader,
-    bullet_shader: gfx::Shader,
+    pbr_shader: gfx::opengl::Idx,
+    bullet_shader: gfx::opengl::Idx,
     entities: &mut ace::Entities,
     clock: Box<ace::glfw_input::GlfwClock>,
     collider: ace::physics::Collider,
@@ -228,7 +228,7 @@ fn setup_world(
     let projection = gfx::Projection {
         width: width as f32,
         height: height as f32,
-        fov: math::radians(75.0),
+        fov: math::Radians::from_degrees(75.0),
         near: 0.1,
         far: 1000.0,
     };

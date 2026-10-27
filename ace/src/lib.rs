@@ -279,7 +279,7 @@ pub enum Components {
     Model(ModelNodes),
     Transform(Transform),
     Light(gfx::Light),
-    Line(gfx::Shader),
+    Line(gfx::opengl::Idx),
     Scripts(Vec<Box<dyn scripts::Script>>),
     Player,
     Collider(physics::Collider),

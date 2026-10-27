@@ -6,6 +6,7 @@ mod tests;
 mod vector;
 
 use std::f32::consts::PI;
+use std::ops::Deref;
 
 pub use matrix::Matrix4;
 pub use vector::Vec;
@@ -98,6 +99,26 @@ pub fn rotation_fpv(direction: &Vec3) -> Matrix4 {
 
 pub const fn radians(degree: f32) -> f32 {
     PI / 180.0 * degree
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Radians(f32);
+impl Radians {
+    pub const fn from_degrees(degree: f32) -> Radians {
+        Radians(radians(degree))
+    }
+}
+impl From<f32> for Radians {
+    fn from(value: f32) -> Self {
+        Radians(value)
+    }
+}
+impl Deref for Radians {
+    type Target = f32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 /// Creates a rotation matrix for transforming a model around the three axises x,y,z

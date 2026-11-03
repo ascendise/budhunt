@@ -282,7 +282,103 @@ impl TextureFormat {
     pub const SRGB_ALPHA: TextureFormat = TextureFormat(gl::SRGB_ALPHA as i32, gl::RGBA);
     pub const RGB: TextureFormat = TextureFormat(gl::RGB8 as i32, gl::RGB);
     pub const RGB32F: TextureFormat = TextureFormat(gl::RGB32F as i32, gl::RGB);
+    pub const DEPTH: TextureFormat = TextureFormat(gl::DEPTH_COMPONENT as i32, gl::DEPTH_COMPONENT);
 }
+
+pub struct BufferTexture {
+    name: gl::types::GLuint,
+    buffer: Framebuffer,
+}
+impl BufferTexture {
+    pub fn new(
+        buffer: Framebuffer,
+        attachment: gl::types::GLuint,
+        width: i32,
+        height: i32,
+        format: &TextureFormat,
+    ) -> Self {
+        unsafe {
+            let texture = Self::create_texture(width, height, format);
+            buffer.bind();
+            gl::FramebufferTexture2D(gl::FRAMEBUFFER, attachment, gl::TEXTURE_2D, texture, 0);
+            Self {
+                name: texture,
+                buffer,
+            }
+        }
+    }
+
+    pub fn create_texture(width: i32, height: i32, format: &TextureFormat) -> u32 {
+        let mut texture = 0;
+        unsafe {
+            gl::GenTextures(1, &mut texture);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                format.0,
+                width,
+                height,
+                0,
+                format.1,
+                gl::FLOAT, //TODO: move into TextureFormat
+                null(),
+            );
+        }
+        texture
+    }
+
+    pub fn texture_filter(&self, minification: i32, magnification: i32) {
+        unsafe {
+            gl::BindTexture(gl::TEXTURE_2D, self.name);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, minification);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, magnification);
+        }
+    }
+
+    pub fn texture_wrap(&self, s: i32, t: i32) {
+        unsafe {
+            gl::BindTexture(gl::TEXTURE_2D, self.name);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, s);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, t);
+        }
+    }
+}
+impl Drop for BufferTexture {
+    fn drop(&mut self) {
+        unsafe { gl::DeleteTextures(1, &self.name) }
+    }
+}
+pub struct Framebuffer(gl::types::GLuint);
+impl Framebuffer {
+    pub fn new() -> Self {
+        unsafe {
+            let mut fbo = 0;
+            gl::GenFramebuffers(1, &mut fbo);
+            Self(fbo)
+        }
+    }
+
+    pub fn bind(&self) {
+        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, self.0) }
+    }
+
+    pub fn buffers(&self, draw: gl::types::GLenum, read: gl::types::GLenum) {
+        unsafe {
+            self.bind();
+            gl::DrawBuffer(draw);
+            gl::ReadBuffer(read);
+        }
+    }
+}
+impl Drop for Framebuffer {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteFramebuffers(1, &self.0);
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program(u32);
 impl Program {
@@ -327,6 +423,39 @@ impl Program {
         Location::find(self, key)
     }
 }
+pub struct Shader(gl::types::GLuint);
+impl Shader {
+    pub fn compile(source: &str, shader_type: gl::types::GLenum) -> Result<Self, OpenGlError> {
+        unsafe {
+            let shader = gl::CreateShader(shader_type);
+            let source = CString::new(source).expect("Could not convert shader source to CString");
+            gl::ShaderSource(shader, 1, &source.as_ptr(), null());
+            gl::CompileShader(shader);
+            let mut success = 0;
+            gl::GetShaderiv(shader, gl::COMPILE_STATUS, &mut success);
+            if success == 0 {
+                let err = Self::get_shader_info_log(shader);
+                gl::DeleteShader(shader);
+                return Err(OpenGlError { err });
+            }
+            Ok(Self(shader))
+        }
+    }
+
+    fn get_shader_info_log(shader: u32) -> String {
+        unsafe {
+            let mut err = ['\0' as i8; 512];
+            gl::GetShaderInfoLog(shader, 512, null_mut(), err.as_mut_ptr());
+            let err = String::from_utf8(err.iter().map(|c| *c as u8).collect()).unwrap();
+            err.trim_end_matches('\0').to_string()
+        }
+    }
+}
+impl Drop for Shader {
+    fn drop(&mut self) {
+        unsafe { gl::DeleteShader(self.0) }
+    }
+}
 pub type Uniforms = IndexMap<Location, Uniform>;
 pub enum Uniform {
     Vec3(math::Vec3),
@@ -361,58 +490,6 @@ impl Location {
             }
             let location = Self(location);
             Some(location)
-        }
-    }
-}
-
-pub struct Shader(gl::types::GLuint);
-impl Shader {
-    pub fn compile(source: &str, shader_type: gl::types::GLenum) -> Result<Self, OpenGlError> {
-        unsafe {
-            let shader = gl::CreateShader(shader_type);
-            let source = CString::new(source).expect("Could not convert shader source to CString");
-            gl::ShaderSource(shader, 1, &source.as_ptr(), null());
-            gl::CompileShader(shader);
-            let mut success = 0;
-            gl::GetShaderiv(shader, gl::COMPILE_STATUS, &mut success);
-            if success == 0 {
-                let err = Self::get_shader_info_log(shader);
-                gl::DeleteShader(shader);
-                return Err(OpenGlError { err });
-            }
-            Ok(Self(shader))
-        }
-    }
-
-    fn get_shader_info_log(shader: u32) -> String {
-        unsafe {
-            let mut err = ['\0' as i8; 512];
-            gl::GetShaderInfoLog(shader, 512, null_mut(), err.as_mut_ptr());
-            let err = String::from_utf8(err.iter().map(|c| *c as u8).collect()).unwrap();
-            err.trim_end_matches('\0').to_string()
-        }
-    }
-}
-impl Drop for Shader {
-    fn drop(&mut self) {
-        unsafe { gl::DeleteShader(self.0) }
-    }
-}
-
-pub struct Framebuffer(gl::types::GLuint);
-impl Framebuffer {
-    pub fn new() -> Self {
-        unsafe {
-            let mut fbo = 0;
-            gl::GenFramebuffers(1, &mut fbo);
-            Self(fbo)
-        }
-    }
-}
-impl Drop for Framebuffer {
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteFramebuffers(1, &self.0);
         }
     }
 }

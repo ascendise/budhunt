@@ -7,7 +7,7 @@ use crate::gfx::*;
 
 pub static TONEMAPPING_SHADER: &str = include_str!("tonemapping.glsl");
 
-pub trait OpenGlShader {
+pub trait ShaderProgram {
     fn render(&self, state: &State, renderables: &[Renderable], view_projection: &ViewProjection);
 }
 
@@ -37,7 +37,7 @@ impl ModelShader {
         Self { skybox, program }
     }
 }
-impl OpenGlShader for ModelShader {
+impl ShaderProgram for ModelShader {
     fn render(&self, state: &State, renderables: &[Renderable], view_projection: &ViewProjection) {
         unsafe {
             let models: Vec<Model> = renderables
@@ -199,6 +199,42 @@ impl ModelShader {
     }
 }
 
+pub struct ShadowShader {
+    texture: BufferTexture,
+    program: Program,
+}
+impl ShadowShader {
+    const TEXTURE_SIZE: i32 = 1024;
+    const VERTEX_SHADER_SHADOW: &str = include_str!("shadow.vs.glsl");
+    const FRAGMENT_SHADER_SHADOW: &str = include_str!("shadow.fs.glsl");
+
+    pub fn new() -> Self {
+        let buffer = Framebuffer::new();
+        let texture = BufferTexture::new(
+            buffer,
+            gl::DEPTH_ATTACHMENT,
+            Self::TEXTURE_SIZE,
+            Self::TEXTURE_SIZE,
+            TextureFormat::DEPTH,
+        );
+        texture.texture_filter(gl::NEAREST as i32, gl::NEAREST as i32);
+        texture.texture_wrap(gl::REPEAT as i32, gl::REPEAT as i32);
+        let program = Program::link(&[
+            Shader::compile(Self::VERTEX_SHADER_SHADOW, gl::VERTEX_SHADER)
+                .expect("failed to compile shadow vertex shader"),
+            Shader::compile(Self::FRAGMENT_SHADER_SHADOW, gl::FRAGMENT_SHADER)
+                .expect("failed to compile shadow fragment shader"),
+        ])
+        .expect("failed to link shadow shader program");
+        Self { texture, program }
+    }
+}
+impl ShaderProgram for ShadowShader {
+    fn render(&self, state: &State, renderables: &[Renderable], view_projection: &ViewProjection) {
+        todo!()
+    }
+}
+
 pub struct SkyboxShader {
     skybox: Arc<Skybox>,
     program: Program,
@@ -220,7 +256,7 @@ impl SkyboxShader {
         Self { skybox, program }
     }
 }
-impl OpenGlShader for SkyboxShader {
+impl ShaderProgram for SkyboxShader {
     fn render(&self, _: &State, _: &[Renderable], view_projection: &ViewProjection) {
         unsafe {
             self.skybox.vao.bind();
@@ -300,16 +336,16 @@ impl Skybox {
 
     pub fn new(skybox: &gfx::Ibl) -> Self {
         let vao = VertexArray::simple_new(&Skybox::VERTICES);
-        let image = ImageTexture::new(&skybox.skybox, gl::FLOAT, &TextureFormat::RGB32F, true);
+        let image = ImageTexture::new(&skybox.skybox, gl::FLOAT, TextureFormat::RGB32F, true);
         image.texture_filter(gl::LINEAR as i32, gl::LINEAR as i32);
-        let diffuse = ImageTexture::new(&skybox.diffuse, gl::FLOAT, &TextureFormat::RGB32F, true);
+        let diffuse = ImageTexture::new(&skybox.diffuse, gl::FLOAT, TextureFormat::RGB32F, true);
         let specular =
-            ImageTexture::new_with_levels(&skybox.specular, gl::FLOAT, &TextureFormat::RGB32F);
+            ImageTexture::new_with_levels(&skybox.specular, gl::FLOAT, TextureFormat::RGB32F);
         specular.texture_filter(gl::LINEAR_MIPMAP_LINEAR as i32, gl::LINEAR as i32);
         let brdf_lut = ImageTexture::new(
             &skybox.brdf_lut,
             gl::UNSIGNED_BYTE,
-            &TextureFormat::RGB,
+            TextureFormat::RGB,
             true,
         );
         Self {
@@ -350,7 +386,7 @@ impl LineShader {
         Self { line, program }
     }
 }
-impl OpenGlShader for LineShader {
+impl ShaderProgram for LineShader {
     fn render(&self, _: &State, renderables: &[Renderable], view_projection: &ViewProjection) {
         let lines: Vec<Line> = renderables
             .iter()

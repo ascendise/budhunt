@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::gfx::{
     opengl::{
-        shaders::{OpenGlShader, ViewProjection},
+        shaders::{ShaderProgram, ViewProjection},
         state::*,
     },
     *,
@@ -29,7 +29,7 @@ macro_rules! assert_no_gl_error {
 
 pub struct OpenGlRenderer {
     state: State,
-    shaders: Vec<Box<dyn OpenGlShader>>,
+    shaders: Vec<Box<dyn ShaderProgram>>,
 }
 impl OpenGlRenderer {
     pub fn init(skybox: Arc<shaders::Skybox>) -> Self {
@@ -66,14 +66,14 @@ impl OpenGlRenderer {
         let albedo = ImageTexture::new(
             &node.albedo,
             gl::UNSIGNED_BYTE,
-            &TextureFormat::SRGB_ALPHA,
+            TextureFormat::SRGB_ALPHA,
             true,
         );
         let albedo = self.state.textures.insert(albedo);
         let metallic_roughness_ao = ImageTexture::new(
             &node.metallic_roughness_ao,
             gl::UNSIGNED_BYTE,
-            &TextureFormat::RGB,
+            TextureFormat::RGB,
             true,
         );
         let metallic_roughness_ao = self.state.textures.insert(metallic_roughness_ao);

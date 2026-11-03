@@ -279,10 +279,11 @@ impl Drop for ImageTexture {
 }
 pub struct TextureFormat(gl::types::GLint, gl::types::GLenum);
 impl TextureFormat {
-    pub const SRGB_ALPHA: TextureFormat = TextureFormat(gl::SRGB_ALPHA as i32, gl::RGBA);
-    pub const RGB: TextureFormat = TextureFormat(gl::RGB8 as i32, gl::RGB);
-    pub const RGB32F: TextureFormat = TextureFormat(gl::RGB32F as i32, gl::RGB);
-    pub const DEPTH: TextureFormat = TextureFormat(gl::DEPTH_COMPONENT as i32, gl::DEPTH_COMPONENT);
+    pub const SRGB_ALPHA: &TextureFormat = &TextureFormat(gl::SRGB_ALPHA as i32, gl::RGBA);
+    pub const RGB: &TextureFormat = &TextureFormat(gl::RGB8 as i32, gl::RGB);
+    pub const RGB32F: &TextureFormat = &TextureFormat(gl::RGB32F as i32, gl::RGB);
+    pub const DEPTH: &TextureFormat =
+        &TextureFormat(gl::DEPTH_COMPONENT as i32, gl::DEPTH_COMPONENT);
 }
 
 pub struct BufferTexture {
@@ -328,7 +329,7 @@ impl BufferTexture {
         texture
     }
 
-    pub fn texture_filter(&self, minification: i32, magnification: i32) {
+    pub fn texture_filter(&self, minification: gl::types::GLint, magnification: gl::types::GLint) {
         unsafe {
             gl::BindTexture(gl::TEXTURE_2D, self.name);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, minification);
@@ -336,7 +337,7 @@ impl BufferTexture {
         }
     }
 
-    pub fn texture_wrap(&self, s: i32, t: i32) {
+    pub fn texture_wrap(&self, s: gl::types::GLint, t: gl::types::GLint) {
         unsafe {
             gl::BindTexture(gl::TEXTURE_2D, self.name);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, s);

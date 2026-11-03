@@ -63,14 +63,14 @@ impl OpenGlRenderer {
 
     fn load_mesh_node(&mut self, node: &MeshNode) -> ModelNode {
         let vao = self.set_mesh_vao(node);
-        let albedo = Texture::new(
+        let albedo = ImageTexture::new(
             &node.albedo,
             gl::UNSIGNED_BYTE,
             &TextureFormat::SRGB_ALPHA,
             true,
         );
         let albedo = self.state.textures.insert(albedo);
-        let metallic_roughness_ao = Texture::new(
+        let metallic_roughness_ao = ImageTexture::new(
             &node.metallic_roughness_ao,
             gl::UNSIGNED_BYTE,
             &TextureFormat::RGB,

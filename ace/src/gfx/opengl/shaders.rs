@@ -253,10 +253,10 @@ impl SkyboxShader {
 #[derive(Debug)]
 pub struct Skybox {
     vao: VertexArray,
-    image: Texture,
-    diffuse: Texture,
-    specular: Texture,
-    brdf_lut: Texture,
+    image: ImageTexture,
+    diffuse: ImageTexture,
+    specular: ImageTexture,
+    brdf_lut: ImageTexture,
 }
 impl Skybox {
     pub const VERTICES: [math::Vec3; 36] = [
@@ -300,13 +300,13 @@ impl Skybox {
 
     pub fn new(skybox: &gfx::Ibl) -> Self {
         let vao = VertexArray::simple_new(&Skybox::VERTICES);
-        let image = Texture::new(&skybox.skybox, gl::FLOAT, &TextureFormat::RGB32F, true);
+        let image = ImageTexture::new(&skybox.skybox, gl::FLOAT, &TextureFormat::RGB32F, true);
         image.texture_filter(gl::LINEAR as i32, gl::LINEAR as i32);
-        let diffuse = Texture::new(&skybox.diffuse, gl::FLOAT, &TextureFormat::RGB32F, true);
+        let diffuse = ImageTexture::new(&skybox.diffuse, gl::FLOAT, &TextureFormat::RGB32F, true);
         let specular =
-            Texture::new_with_levels(&skybox.specular, gl::FLOAT, &TextureFormat::RGB32F);
+            ImageTexture::new_with_levels(&skybox.specular, gl::FLOAT, &TextureFormat::RGB32F);
         specular.texture_filter(gl::LINEAR_MIPMAP_LINEAR as i32, gl::LINEAR as i32);
-        let brdf_lut = Texture::new(
+        let brdf_lut = ImageTexture::new(
             &skybox.brdf_lut,
             gl::UNSIGNED_BYTE,
             &TextureFormat::RGB,

@@ -18,7 +18,7 @@ pub type Idx = usize;
 #[derive(Debug, PartialEq, Eq)]
 pub struct State {
     pub vertex_arrays: StateCollection<VertexArray>,
-    pub textures: StateCollection<Texture>,
+    pub textures: StateCollection<ImageTexture>,
     pub programs: StateCollection<Program>,
 }
 impl State {
@@ -207,8 +207,8 @@ impl Drop for VertexArray {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Texture(u32);
-impl Texture {
+pub struct ImageTexture(u32);
+impl ImageTexture {
     pub fn new<T>(
         image: &Image<T>,
         data_format: u32,
@@ -252,7 +252,7 @@ impl Texture {
         format: &TextureFormat,
     ) -> Self {
         let texture = Self::generate_texture(images, data_format, format);
-        Texture(texture)
+        ImageTexture(texture)
     }
 
     /// Binds [Texture] to [texture unit](gl::TEXTURE0)
@@ -272,7 +272,7 @@ impl Texture {
         }
     }
 }
-impl Drop for Texture {
+impl Drop for ImageTexture {
     fn drop(&mut self) {
         unsafe { gl::DeleteTextures(1, &self.0) }
     }

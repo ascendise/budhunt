@@ -399,6 +399,24 @@ impl Drop for Shader {
     }
 }
 
+pub struct Framebuffer(gl::types::GLuint);
+impl Framebuffer {
+    pub fn new() -> Self {
+        unsafe {
+            let mut fbo = 0;
+            gl::GenFramebuffers(1, &mut fbo);
+            Self(fbo)
+        }
+    }
+}
+impl Drop for Framebuffer {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteFramebuffers(1, &self.0);
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct OpenGlError {
     err: String,

@@ -93,10 +93,8 @@ impl RenderSystem {
             line.get(Components::TRANSFORM),
             Some(Components::Transform) or &Default::default()
         );
-        let program = *component!(&line[Components::LINE], Components::Line);
         Line {
             transform: *transform,
-            program,
         }
     }
 }
@@ -148,7 +146,6 @@ pub type ModelNodes = Vec<ModelNode>;
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct ModelNode {
     pub vao: Idx,
-    pub program: Idx,
     pub material: Material,
     pub vertices: usize,
     pub indices: usize,
@@ -384,7 +381,6 @@ impl Display for LoadGlbError {
 #[derive(Debug, Clone)]
 pub struct Line {
     pub transform: Transform,
-    pub program: Idx,
 }
 
 pub struct Mesh {

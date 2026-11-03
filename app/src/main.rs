@@ -1,25 +1,14 @@
 use crate::scripts::PlayerScript;
 use ace::{
     component,
-    gfx::{self},
+    gfx::{self, opengl},
     math::{self},
     script, vec3,
 };
 use glfw::Context;
-use std::{f32, fs};
-use std::{
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::{f32, fs, sync::Arc};
+use std::{path::Path, sync::Mutex};
 mod scripts;
-
-static VERTEX_SHADER_PBR: &str = include_str!("../shaders/pbr.vs.glsl");
-static FRAGMENT_SHADER_PBR: &str = include_str!("../shaders/pbr.fs.glsl");
-static TONEMAPPING_SHADER: &str = include_str!("../shaders/tonemapping.glsl");
-static VERTEX_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.vs.glsl");
-static FRAGMENT_SHADER_SKYBOX: &str = include_str!("../shaders/skybox.fs.glsl");
-static VERTEX_SHADER_LINE: &str = include_str!("../shaders/line.vs.glsl");
-static FRAGMENT_SHADER_LINE: &str = include_str!("../shaders/line.fs.glsl");
 
 fn box_collider(width: f32, height: f32, depth: f32) -> ace::physics::Collider {
     let vertices = vec![
@@ -38,28 +27,14 @@ fn box_collider(width: f32, height: f32, depth: f32) -> ace::physics::Collider {
 fn main() {
     let mut glfw = glfw::init(glfw::fail_on_errors).unwrap();
     let window = setup_window(&mut glfw);
-    let mut renderer = gfx::opengl::OpenGlRenderer::init();
-    set_skybox(&mut renderer);
-    let pbr_program = renderer
-        .compile_shader(VERTEX_SHADER_PBR, FRAGMENT_SHADER_PBR, TONEMAPPING_SHADER)
-        .expect("Failed to compile model shader");
+    let mut renderer = opengl::OpenGlRenderer::init(load_skybox());
     let mut entities = ace::Entities::empty();
     let clock = Box::new(ace::glfw_input::GlfwClock::new(glfw.clone()));
     let collider = box_collider(0.1, 1.0, 0.1);
-    let lines_program = renderer
-        .compile_shader(VERTEX_SHADER_LINE, FRAGMENT_SHADER_LINE, TONEMAPPING_SHADER)
-        .expect("Failed to compile model shader");
-    spawn_player(
-        &mut renderer,
-        pbr_program,
-        lines_program,
-        &mut entities,
-        clock.clone(),
-        collider,
-    );
-    spawn_targets(&mut renderer, pbr_program, &mut entities);
+    spawn_player(&mut renderer, &mut entities, clock.clone(), collider);
+    spawn_targets(&mut renderer, &mut entities);
     spawn_point_lights(&mut entities);
-    spawn_floor(&mut renderer, pbr_program, &mut entities);
+    spawn_floor(&mut renderer, &mut entities);
     let window = Arc::new(Mutex::new(window));
     let mut world = setup_world(renderer, entities, clock, &window);
     while !window.lock().unwrap().should_close() {
@@ -89,28 +64,44 @@ fn setup_window(glfw: &mut glfw::Glfw) -> glfw::PWindow {
     window
 }
 
-fn set_skybox(renderer: &mut gfx::opengl::OpenGlRenderer) {
+fn load_skybox() -> Arc<opengl::Skybox> {
     let skybox = fs::read("./app/skybox.ibl").expect("failed to read skybox.ibl");
     let skybox = gfx::Ibl::deserialize(&skybox);
-    let shader = renderer
-        .compile_shader(
-            VERTEX_SHADER_SKYBOX,
-            FRAGMENT_SHADER_SKYBOX,
-            TONEMAPPING_SHADER,
-        )
-        .unwrap();
-    renderer.set_skybox(&skybox, shader);
+    let skybox = opengl::Skybox::new(&skybox);
+    Arc::new(skybox)
+}
+
+fn spawn_player(
+    renderer: &mut gfx::opengl::OpenGlRenderer,
+    entities: &mut ace::Entities,
+    clock: Box<ace::glfw_input::GlfwClock>,
+    collider: ace::physics::Collider,
+) {
+    let (rifle_mesh, metainfo) =
+        gfx::load_mesh_from_glb(Path::new("./app/models/Rifle.glb")).expect("failed to load rifle");
+    let rifle_model = renderer.load_mesh(&rifle_mesh);
+    let player_script = PlayerScript::new(clock);
+    let point = *metainfo.points.first().expect("muzzle point data missing");
+    entities.create_entity(vec![
+        ace::Components::Transform(ace::x3d::Transform::new(vec3!(0.0, 0.0, 5.0))),
+        //ace::Components::Position(vec3!(0.0, 0.0, -20.0)),
+        ace::Components::Point(point),
+        ace::Components::Scripts(vec![Box::new(player_script)]),
+        ace::Components::Player,
+        ace::Components::Collider(collider),
+        ace::Components::Model(rifle_model),
+        ace::Components::RigidBody(ace::physics::RigidBody::new(vec3!(0.0))),
+    ]);
 }
 
 fn spawn_targets(
     renderer: &mut gfx::opengl::OpenGlRenderer,
-    shader_program: gfx::opengl::Idx,
     entities: &mut ace::Entities,
 ) -> ace::physics::Collider {
     // Collider should be hitting player even if visible object is very high (for testing)
     let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"))
         .expect("Failed to load targets");
-    let model = renderer.load_mesh(&mesh, shader_program);
+    let model = renderer.load_mesh(&mesh);
     let targets = [
         vec3!(0.0, 0.0, 0.0),
         vec3!(2.0, 5.0, -15.0),
@@ -167,11 +158,7 @@ fn create_point_light(position: math::Vec3) -> gfx::PointLight {
     }
 }
 
-fn spawn_floor(
-    renderer: &mut gfx::opengl::OpenGlRenderer,
-    shader_program: gfx::opengl::Idx,
-    entities: &mut ace::Entities,
-) {
+fn spawn_floor(renderer: &mut gfx::opengl::OpenGlRenderer, entities: &mut ace::Entities) {
     let (mut plane_mesh, _) =
         gfx::load_mesh_from_glb(Path::new("./app/models/Plane.glb")).expect("failed to load plane");
     // Scale / Move model programatically
@@ -185,36 +172,10 @@ fn spawn_floor(
             new
         })
         .collect();
-    let plane_model = renderer.load_mesh(&plane_mesh, shader_program);
+    let plane_model = renderer.load_mesh(&plane_mesh);
     entities.create_entity(vec![
         ace::Components::Model(plane_model),
         ace::Components::Transform(Default::default()),
-    ]);
-}
-
-fn spawn_player(
-    renderer: &mut gfx::opengl::OpenGlRenderer,
-    pbr_shader: gfx::opengl::Idx,
-    bullet_shader: gfx::opengl::Idx,
-    entities: &mut ace::Entities,
-    clock: Box<ace::glfw_input::GlfwClock>,
-    collider: ace::physics::Collider,
-) {
-    let (rifle_mesh, metainfo) =
-        gfx::load_mesh_from_glb(Path::new("./app/models/Rifle.glb")).expect("failed to load rifle");
-    let rifle_model = renderer.load_mesh(&rifle_mesh, pbr_shader);
-    let mut player_script = PlayerScript::new(clock);
-    player_script.set_bullet_shader(bullet_shader);
-    let point = *metainfo.points.first().expect("muzzle point data missing");
-    entities.create_entity(vec![
-        ace::Components::Transform(ace::x3d::Transform::new(vec3!(0.0, 0.0, 5.0))),
-        //ace::Components::Position(vec3!(0.0, 0.0, -20.0)),
-        ace::Components::Point(point),
-        ace::Components::Scripts(vec![Box::new(player_script)]),
-        ace::Components::Player,
-        ace::Components::Collider(collider),
-        ace::Components::Model(rifle_model),
-        ace::Components::RigidBody(ace::physics::RigidBody::new(vec3!(0.0))),
     ]);
 }
 

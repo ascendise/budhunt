@@ -8,7 +8,6 @@ use ace::{
 mod tests;
 
 pub struct PlayerScript {
-    bullet_shader: ace::gfx::opengl::Idx,
     clock: Box<dyn ace::Clock>,
 }
 impl ace::Script for PlayerScript {
@@ -57,14 +56,7 @@ impl ace::Script for PlayerScript {
 }
 impl PlayerScript {
     pub fn new(clock: Box<dyn ace::Clock>) -> Self {
-        Self {
-            bullet_shader: 0,
-            clock,
-        }
-    }
-
-    pub fn set_bullet_shader(&mut self, shader: ace::gfx::opengl::Idx) {
-        self.bullet_shader = shader;
+        Self { clock }
     }
 
     /// Moves camera on xyz-axis and returns movement direction and current view direction
@@ -143,7 +135,7 @@ impl PlayerScript {
                 };
                 let vertices = vec![vec3!(0.0), vec3!(0.0, 0.0, -100.0)];
                 updates.spawn(vec![
-                    ace::Components::Line(self.bullet_shader),
+                    ace::Components::Line(()),
                     ace::Components::Transform(transform),
                     ace::Components::Collider(ace::physics::Collider::new(vertices)),
                 ]);

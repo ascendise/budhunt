@@ -33,7 +33,6 @@ pub fn render_should_pass_objects_to_renderer_with_default_transform() {
     entities.create_entity(vec![Components::Transform(Default::default())]); // Some random filler
     let expected_node = ModelNode {
         vao: 123,
-        program: 123,
         material: Material {
             albedo: 0,
             metallic_roughness_ao: 0,
@@ -71,7 +70,6 @@ pub fn render_should_transform_models_with_specific_transform() {
     setup_camera(&mut entities);
     let model = ModelNode {
         vao: 123,
-        program: 123,
         material: Material {
             albedo: 0,
             metallic_roughness_ao: 0,

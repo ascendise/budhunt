@@ -86,7 +86,6 @@ impl<T: Component, const E: usize> Entities<T, E> {
         let mut updates = self.update();
         updates.set_batch(entity_id, entity);
         self.commit(updates);
-
         entity_id
     }
 
@@ -279,7 +278,7 @@ pub enum Components {
     Model(ModelNodes),
     Transform(Transform),
     Light(gfx::Light),
-    Line(gfx::opengl::Idx),
+    Line(()), // Hack. See https://gitea.ascendise.ch/ascendise/budhunt/issues/37
     Scripts(Vec<Box<dyn scripts::Script>>),
     Player,
     Collider(physics::Collider),

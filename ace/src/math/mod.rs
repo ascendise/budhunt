@@ -45,7 +45,7 @@ pub fn vector_triple_product(v1: &Vec3, v2: &Vec3, v3: &Vec3) -> Vec3 {
     v1.cross(&v2.cross(v3))
 }
 
-pub fn projection(fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Matrix4 {
+pub fn perspective(fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Matrix4 {
     let fov_tan = (fov / 2.0).tan();
     [
         [1.0 / (aspect_ratio * fov_tan), 0.0, 0.0, 0.0],
@@ -57,6 +57,26 @@ pub fn projection(fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Matrix4 {
             (2.0 * far * near) / (near - far),
         ],
         [0.0, 0.0, -1.0, 0.0],
+    ]
+    .into()
+}
+
+pub fn orthographic(left: f32, right: f32, top: f32, bottom: f32, near: f32, far: f32) -> Matrix4 {
+    [
+        [
+            2.0 / (right - left),
+            0.0,
+            0.0,
+            (right + left) / (right - left),
+        ],
+        [
+            0.0,
+            2.0 / (top - bottom),
+            0.0,
+            (top + bottom) / (top - bottom),
+        ],
+        [0.0, 0.0, -2.0 / (far - near), (far + near) / (far - near)],
+        [0.0, 0.0, 0.0, 1.0],
     ]
     .into()
 }

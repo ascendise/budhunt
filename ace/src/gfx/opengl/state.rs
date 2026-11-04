@@ -344,6 +344,10 @@ impl BufferTexture {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, t);
         }
     }
+
+    pub fn buffer(&self) -> &Framebuffer {
+        &self.buffer
+    }
 }
 impl Drop for BufferTexture {
     fn drop(&mut self) {
@@ -352,6 +356,8 @@ impl Drop for BufferTexture {
 }
 pub struct Framebuffer(gl::types::GLuint);
 impl Framebuffer {
+    pub const DEFAULT: &Framebuffer = &Self(0);
+
     pub fn new() -> Self {
         unsafe {
             let mut fbo = 0;
@@ -374,6 +380,10 @@ impl Framebuffer {
 }
 impl Drop for Framebuffer {
     fn drop(&mut self) {
+        if self.0 == 0 {
+            // we don't want to delete the default framebuffer
+            return;
+        }
         unsafe {
             gl::DeleteFramebuffers(1, &self.0);
         }
@@ -476,6 +486,26 @@ impl Uniform {
                 Uniform::Int(int) => gl::Uniform1i(location.0, *int),
             }
         }
+    }
+}
+impl From<math::Vec3> for Uniform {
+    fn from(value: math::Vec3) -> Self {
+        Self::Vec3(value)
+    }
+}
+impl From<math::Matrix4> for Uniform {
+    fn from(value: math::Matrix4) -> Self {
+        Self::Mat4(value)
+    }
+}
+impl From<f32> for Uniform {
+    fn from(value: f32) -> Self {
+        Self::Float(value)
+    }
+}
+impl From<i32> for Uniform {
+    fn from(value: i32) -> Self {
+        Self::Int(value)
     }
 }
 

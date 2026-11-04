@@ -220,8 +220,51 @@ impl ShadowShader {
     }
 }
 impl ShaderProgram for ShadowShader {
-    fn render(&self, state: &State, renderables: &Renderables, view_projection: &ViewProjection) {
-        todo!()
+    fn render(&self, state: &State, renderables: &Renderables, _: &ViewProjection) {
+        unsafe {
+            let mut viewport = [0; 4];
+            gl::GetIntegerv(gl::VIEWPORT, viewport.as_mut_ptr());
+            gl::Viewport(0, 0, Self::TEXTURE_SIZE, Self::TEXTURE_SIZE);
+            self.texture.buffer().bind();
+            gl::Clear(gl::DEPTH_BUFFER_BIT);
+            const NEAR: f32 = 1.0;
+            const FAR: f32 = 7.5;
+            const LIGHT_DIR: math::Vec3 = vec3!(1.0, 1.0, 0.0);
+            let projection = math::orthographic(-10.0, 10.0, -10.0, 10.0, NEAR, FAR);
+            let view = math::look_at(&LIGHT_DIR, &vec3!(0.0), &vec3!(0.0, 1.0, 0.0));
+            for model in &renderables.models {
+                let model_matrix = model.transform.model_matrix();
+                for node in &model.nodes {
+                    self.render_depth(state, projection * view, model_matrix, node);
+                }
+            }
+            Framebuffer::DEFAULT.bind();
+            gl::Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+        }
+    }
+}
+impl ShadowShader {
+    fn render_depth(
+        &self,
+        state: &State,
+        view_projection: math::Matrix4,
+        model_matrix: math::Matrix4,
+        node: &ModelNode,
+    ) {
+        let vao = &state.vertex_arrays[node.vao];
+        vao.bind();
+        self.program.use_and_set(&indexmap! {
+            self.program.location("uLightViewProjection").unwrap() => Uniform::Mat4(view_projection),
+            self.program.location("uModel").unwrap() => Uniform::Mat4(model_matrix)
+        });
+        unsafe {
+            //TODO: rid duplicate code
+            if node.indices > 0 {
+                gl::DrawElements(gl::TRIANGLES, node.indices as i32, gl::UNSIGNED_INT, null());
+            } else {
+                gl::DrawArrays(gl::TRIANGLES, 0, node.vertices as i32);
+            }
+        }
     }
 }
 

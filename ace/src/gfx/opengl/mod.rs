@@ -39,12 +39,14 @@ impl OpenGlRenderer {
             gl::Enable(gl::FRAMEBUFFER_SRGB);
         }
         let skybox_shader = shaders::SkyboxShader::new(skybox.clone());
+        let shadow_shader = shaders::ShadowShader::new();
         let model_shader = shaders::ModelShader::new(skybox);
         let line_shader = shaders::LineShader::new();
         Self {
             state: State::new(),
             shaders: vec![
                 Box::new(skybox_shader),
+                Box::new(shadow_shader),
                 Box::new(model_shader),
                 Box::new(line_shader),
             ],

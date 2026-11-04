@@ -255,7 +255,7 @@ impl ImageTexture {
         ImageTexture(texture)
     }
 
-    /// Binds [Texture] to [texture unit](gl::TEXTURE0)
+    /// Binds [ImageTexture] to [texture unit](gl::TEXTURE0)
     pub fn bind(&self, unit: usize) {
         unsafe {
             let unit = gl::TEXTURE0 + unit as u32;
@@ -327,6 +327,15 @@ impl BufferTexture {
             );
         }
         texture
+    }
+
+    /// Binds [BufferTexture] to [texture unit](gl::TEXTURE0)
+    pub fn bind(&self, unit: usize) {
+        unsafe {
+            let unit = gl::TEXTURE0 + unit as u32;
+            gl::ActiveTexture(unit);
+            gl::BindTexture(gl::TEXTURE_2D, self.name);
+        }
     }
 
     pub fn texture_filter(&self, minification: gl::types::GLint, magnification: gl::types::GLint) {
@@ -434,6 +443,7 @@ impl Program {
         Location::find(self, key)
     }
 }
+
 pub struct Shader(gl::types::GLuint);
 impl Shader {
     pub fn compile(source: &str, shader_type: gl::types::GLenum) -> Result<Self, OpenGlError> {

@@ -25,6 +25,7 @@ macro_rules! vec2 {
 #[macro_export]
 macro_rules! vec3 {
     ($x:expr, $y:expr, $z:expr) => {{ $crate::math::Vec3::new($x, $y, $z) }};
+    ($x:expr, $y:expr) => {{ $crate::math::Vec3::new($x, $y, 0.0) }};
     ($x:expr) => {
         $crate::math::Vec3::new($x, $x, $x)
     };

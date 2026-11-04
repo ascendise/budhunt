@@ -25,9 +25,12 @@ uniform Material uMaterial;
 uniform int uPointLightsSize;
 uniform PointLight uPointLights[MAX_POINT_LIGHTS];
 
+uniform sampler2D uShadowMap;
+
 in vec3 vFragPos;
 in vec3 vNormal;
 in vec2 vTexPos;
+in vec4 vLightFragPos;
 out vec4 fColor;
 
 vec3 calculateAmbience(vec3 albedo, float metallic, float roughness, float ao);
@@ -44,6 +47,7 @@ float geometry(vec3 normal, vec3 viewDirection, vec3 lightDirection, float rough
 /// Schlick-GGX
 float geometryGgx(vec3 normal, vec3 direction, float roughness);
 vec3 hdrToSdr(vec3 hdrColor);
+float shadow();
 
 const float PI = 3.14159265;
 
@@ -54,9 +58,10 @@ void main() {
   float ao = texture(uMaterial.metallicRoughnessAo, vTexPos).r;
   vec3 ambient = calculateAmbience(albedo, metallic, roughness, ao); //ambient too bright?
   vec3 radiance = calculateRadiance(albedo, metallic, roughness, ao);
+  float shadow = shadow();
   vec3 color = ambient + radiance;
   color = hdrToSdr(color);
-  fColor = vec4(color, 1.0);
+  fColor = vec4(color, 1.0) * (1.0 - shadow);
 }
 
 const vec2 invAtan = vec2(0.1591, 0.3183);
@@ -146,4 +151,12 @@ float geometry(vec3 normal, vec3 viewDirection, vec3 lightDirection, float rough
 float geometryGgx(vec3 normal, vec3 direction, float roughness) {
   float alignment = max(dot(normal, direction), 0.0);
   return alignment / (alignment * (1.0 - roughness) + roughness);
+}
+
+float shadow() {
+  vec3 coords = vLightFragPos.xyz / vLightFragPos.w;
+  coords = coords * 0.5 + 0.5;
+  float closestDepth = texture(uShadowMap, coords.xy).r;
+  float currentDepth = coords.z;
+  return currentDepth > closestDepth ? 1.0 : 0.0;
 }

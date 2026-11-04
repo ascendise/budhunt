@@ -94,7 +94,7 @@ impl OpenGlRenderer {
     }
 }
 impl Renderer for OpenGlRenderer {
-    fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
+    fn render(&self, projection: &Projection, camera: &Camera, renderables: &Renderables) {
         unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT) };
         let view_projection = ViewProjection {
             view: camera.to_view_matrix(),

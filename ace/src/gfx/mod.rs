@@ -17,25 +17,30 @@ impl System for RenderSystem {
         let inputs = events.get_events(|e| event!(e, Event::Input));
         Self::handle_inputs(&inputs, &mut projection);
         let camera = Self::find_camera(entities);
-        let models: Vec<Renderable> = entities
+        let models: Vec<Model> = entities
             .get_entities(Components::MODEL)
             .iter()
-            .map(|m| Renderable::Model(Self::get_model(m)))
+            .map(Self::get_model)
             .collect();
-        let mut lights: Vec<Renderable> = entities
+        let lights: Vec<Light> = entities
             .get_entities(Components::LIGHT)
             .iter()
-            .map(|l| Renderable::Light(Self::get_light(l)))
+            .map(Self::get_light)
             .collect();
-        let mut renderables = models;
-        renderables.append(&mut lights);
-        let mut lines: Vec<Renderable> = entities
+        let lines: Vec<Line> = entities
             .get_entities(Components::LINE)
             .iter()
-            .map(|l| Renderable::Line(Self::get_line(l)))
+            .map(Self::get_line)
             .collect();
-        renderables.append(&mut lines);
-        self.renderer.render(&projection, &camera, &renderables);
+        self.renderer.render(
+            &projection,
+            &camera,
+            &Renderables {
+                models,
+                lights,
+                lines,
+            },
+        );
     }
 }
 impl RenderSystem {
@@ -99,7 +104,7 @@ impl RenderSystem {
     }
 }
 pub trait Renderer {
-    fn render(&self, projection: &Projection, camera: &Camera, render_targets: &[Renderable]);
+    fn render(&self, projection: &Projection, camera: &Camera, render_targets: &Renderables);
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -131,10 +136,10 @@ impl Camera {
 }
 
 #[derive(Debug, Clone)]
-pub enum Renderable {
-    Model(Model),
-    Light(Light),
-    Line(Line),
+pub struct Renderables {
+    pub models: Vec<Model>,
+    pub lights: Vec<Light>,
+    pub lines: Vec<Line>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

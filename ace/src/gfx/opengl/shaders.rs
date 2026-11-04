@@ -8,7 +8,7 @@ use crate::gfx::*;
 pub static TONEMAPPING_SHADER: &str = include_str!("tonemapping.glsl");
 
 pub trait ShaderProgram {
-    fn render(&self, state: &State, renderables: &[Renderable], view_projection: &ViewProjection);
+    fn render(&self, state: &State, renderables: &Renderables, view_projection: &ViewProjection);
 }
 
 pub struct ViewProjection {
@@ -38,25 +38,15 @@ impl ModelShader {
     }
 }
 impl ShaderProgram for ModelShader {
-    fn render(&self, state: &State, renderables: &[Renderable], view_projection: &ViewProjection) {
+    fn render(&self, state: &State, renderables: &Renderables, view_projection: &ViewProjection) {
         unsafe {
-            let models: Vec<Model> = renderables
-                .iter()
-                .filter_map(|m| maybe_component!(m, Renderable::Model))
-                .cloned()
-                .collect();
-            let lights: Vec<Light> = renderables
-                .iter()
-                .filter_map(|m| maybe_component!(m, Renderable::Light))
-                .cloned()
-                .collect();
-            for model in &models {
+            for model in &renderables.models {
                 for node in &model.nodes {
                     state.vertex_arrays[node.vao].bind();
                     let program = &self.program;
                     let uniforms = self.get_model_shader_uniforms(
                         state,
-                        &lights,
+                        &renderables.lights,
                         program,
                         node,
                         model,
@@ -230,7 +220,7 @@ impl ShadowShader {
     }
 }
 impl ShaderProgram for ShadowShader {
-    fn render(&self, state: &State, renderables: &[Renderable], view_projection: &ViewProjection) {
+    fn render(&self, state: &State, renderables: &Renderables, view_projection: &ViewProjection) {
         todo!()
     }
 }
@@ -257,7 +247,7 @@ impl SkyboxShader {
     }
 }
 impl ShaderProgram for SkyboxShader {
-    fn render(&self, _: &State, _: &[Renderable], view_projection: &ViewProjection) {
+    fn render(&self, _: &State, _: &Renderables, view_projection: &ViewProjection) {
         unsafe {
             self.skybox.vao.bind();
             self.skybox.image.bind(0);
@@ -387,16 +377,11 @@ impl LineShader {
     }
 }
 impl ShaderProgram for LineShader {
-    fn render(&self, _: &State, renderables: &[Renderable], view_projection: &ViewProjection) {
-        let lines: Vec<Line> = renderables
-            .iter()
-            .filter_map(|r| maybe_component!(r, Renderable::Line))
-            .cloned()
-            .collect();
+    fn render(&self, _: &State, renderables: &Renderables, view_projection: &ViewProjection) {
         unsafe {
             gl::Enable(gl::LINE_SMOOTH);
             self.line.bind();
-            for line in &lines {
+            for line in &renderables.lines {
                 let model_matrix =
                     math::Matrix4::translation(&line.transform.position) * line.transform.rotation;
                 self.program.use_and_set(&indexmap! {

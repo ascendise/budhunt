@@ -430,7 +430,7 @@ impl Program {
         }
     }
 
-    pub fn location(&self, key: &str) -> Option<Location> {
+    pub fn location(&self, key: &str) -> Result<Location, String> {
         Location::find(self, key)
     }
 }
@@ -512,15 +512,18 @@ impl From<i32> for Uniform {
 #[derive(Eq, Hash, PartialEq)]
 pub struct Location(gl::types::GLint);
 impl Location {
-    pub fn find(program: &Program, uniform_key: &str) -> Option<Self> {
-        let uniform_key = CString::new(uniform_key).unwrap();
+    pub fn find(program: &Program, uniform_key: &str) -> Result<Location, String> {
+        let c_uniform_key = CString::new(uniform_key).unwrap();
         unsafe {
-            let location = gl::GetUniformLocation(program.0, uniform_key.as_ptr());
-            if location == -1 {
-                return None;
+            let location = gl::GetUniformLocation(program.0, c_uniform_key.as_ptr());
+            if location >= 0 {
+                let location = Self(location);
+                Ok(location)
+            } else {
+                Err(format!(
+                    "key '{uniform_key}' was not found in active shader program!"
+                ))
             }
-            let location = Self(location);
-            Some(location)
         }
     }
 }

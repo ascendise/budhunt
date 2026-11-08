@@ -49,8 +49,8 @@ impl OpenGlRenderer {
                 Box::new(skybox_shader),
                 Box::new(model_shader),
                 Box::new(line_shader),
-                // Box::new(shadow_shader),
-                // Box::new(debug_texture),
+                //Box::new(shadow_shader),
+                //Box::new(debug_texture),
             ],
         }
     }

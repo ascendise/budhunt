@@ -167,6 +167,6 @@ float shadow() {
 }
 
 float shadowBias() {
-  float bias = 0.05 * (1.0 - dot(vNormal, vLightFragPos.xyz));
+  float bias = 0.05 * (1.0 - dot(vFragPos, vLightFragPos.xyz));
   return max(bias, 0.005);
 }

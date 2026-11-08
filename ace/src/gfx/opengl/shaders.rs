@@ -15,6 +15,21 @@ pub struct ViewProjection {
     pub view: math::Matrix4,
     pub projection: math::Matrix4,
 }
+impl ViewProjection {
+    pub fn view_projection(&self) -> math::Matrix4 {
+        self.projection * self.view
+    }
+}
+impl From<&ViewProjection> for math::Matrix4 {
+    fn from(value: &ViewProjection) -> Self {
+        value.view_projection()
+    }
+}
+impl From<ViewProjection> for math::Matrix4 {
+    fn from(value: ViewProjection) -> Self {
+        (&value).into()
+    }
+}
 
 pub struct ModelShader {
     skybox: Arc<Skybox>,
@@ -204,7 +219,7 @@ impl ModelShader {
     ) {
         uniforms.insert(
             self.program.location("uLightViewProjection").unwrap(),
-            Uniform::Mat4(*self.shadow_shader.light_view_projection()),
+            Uniform::Mat4(self.shadow_shader.light_view_projection().into()),
         );
         let shadow_map = texture_units.increment();
         self.shadow_shader.texture().bind(shadow_map);
@@ -218,7 +233,7 @@ impl ModelShader {
 pub struct ShadowShader {
     texture: Arc<BufferTexture>,
     program: Program,
-    view_projection: math::Matrix4,
+    view_projection: ViewProjection,
 }
 impl ShadowShader {
     const TEXTURE_SIZE: i32 = 1024;
@@ -228,17 +243,17 @@ impl ShadowShader {
     pub fn new() -> Self {
         let buffer = Framebuffer::new();
         buffer.buffers(gl::NONE, gl::NONE);
-        let texture = BufferTexture::new(
+        let shadow_map = BufferTexture::new(
             buffer,
             gl::DEPTH_ATTACHMENT,
             Self::TEXTURE_SIZE,
             Self::TEXTURE_SIZE,
             TextureFormat::DEPTH,
         );
-        texture.texture_filter(gl::NEAREST as i32, gl::NEAREST as i32);
-        //texture.texture_wrap(gl::REPEAT as i32, gl::REPEAT as i32);
-        texture.texture_wrap(gl::CLAMP_TO_BORDER as i32, gl::CLAMP_TO_BORDER as i32);
-        //texture.border_color(&vec4!(1.0));
+        shadow_map.texture_filter(gl::NEAREST as i32, gl::NEAREST as i32);
+        shadow_map.texture_wrap(gl::REPEAT as i32, gl::REPEAT as i32);
+        //shadow_map.texture_wrap(gl::CLAMP_TO_BORDER as i32, gl::CLAMP_TO_BORDER as i32);
+        shadow_map.border_color(&vec4!(1.0));
         let program = Program::link(&[
             Shader::compile(Self::VERTEX_SHADER, gl::VERTEX_SHADER)
                 .expect("failed to compile shadow vertex shader"),
@@ -247,24 +262,24 @@ impl ShadowShader {
         ])
         .expect("failed to link shadow shader program");
         Self {
-            texture: Arc::new(texture),
+            texture: Arc::new(shadow_map),
             program,
             view_projection: Self::calculate_light_view_projection(),
         }
     }
 
-    fn calculate_light_view_projection() -> math::Matrix4 {
+    fn calculate_light_view_projection() -> ViewProjection {
         const LIGHT_DIR: math::Vec3 = vec3!(-2.0, 4.0, -1.0);
-        let projection = math::orthographic(-10.0, 10.0, -10.0, 10.0, 1.0, 7.5);
+        let projection = math::orthographic(-32.0, 32.0, -32.0, 32.0, 1.0, 32.0);
         let view = math::look_at(&LIGHT_DIR, &vec3!(0.0), &vec3!(0.0, 1.0, 0.0));
-        projection * view
+        ViewProjection { projection, view }
     }
 
     pub fn texture(&self) -> &Arc<BufferTexture> {
         &self.texture
     }
 
-    pub fn light_view_projection(&self) -> &math::Matrix4 {
+    pub fn light_view_projection(&self) -> &ViewProjection {
         &self.view_projection
     }
 }
@@ -295,7 +310,7 @@ impl ShadowShader {
         let vao = &state.vertex_arrays[node.vao];
         vao.bind();
         self.program.use_and_set(&indexmap! {
-            self.program.location("uLightViewProjection").unwrap() => Uniform::Mat4(self.view_projection),
+            self.program.location("uLightViewProjection").unwrap() => Uniform::Mat4((&self.view_projection).into()),
             self.program.location("uModel").unwrap() => Uniform::Mat4(model_matrix)
         });
         unsafe {

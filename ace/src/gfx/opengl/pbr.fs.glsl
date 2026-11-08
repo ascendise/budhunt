@@ -158,6 +158,9 @@ float geometryGgx(vec3 normal, vec3 direction, float roughness) {
 float shadow() {
   vec3 coords = vLightFragPos.xyz / vLightFragPos.w;
   coords = coords * 0.5 + 0.5;
+  if (coords.z > 1.0) {
+    return 0.0;
+  }
   float closestDepth = texture(uShadowMap, coords.xy).r;
   float currentDepth = coords.z;
   return currentDepth - shadowBias() > closestDepth ? 1.0 : 0.0;

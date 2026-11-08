@@ -346,11 +346,19 @@ impl BufferTexture {
         }
     }
 
-    pub fn texture_wrap(&self, s: gl::types::GLint, t: gl::types::GLint) {
+    pub fn texture_wrap(&self, wrap_s: gl::types::GLint, wrap_t: gl::types::GLint) {
         unsafe {
             gl::BindTexture(gl::TEXTURE_2D, self.name);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, s);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, t);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, wrap_s);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, wrap_t);
+        }
+    }
+
+    pub fn border_color(&self, color: &math::Vec4) {
+        unsafe {
+            gl::BindTexture(gl::TEXTURE_2D, self.name);
+            let color: [f32; 4] = color.into();
+            gl::TexParameterfv(gl::TEXTURE_2D, gl::TEXTURE_BORDER_COLOR, color.as_ptr());
         }
     }
 

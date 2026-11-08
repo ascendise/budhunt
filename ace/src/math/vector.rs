@@ -62,6 +62,11 @@ impl<const N: usize> From<Vec<N>> for [f32; N] {
         vec.elements
     }
 }
+impl<const N: usize> From<&Vec<N>> for [f32; N] {
+    fn from(vec: &Vec<N>) -> Self {
+        vec.elements
+    }
+}
 
 impl<const N: usize> IntoIterator for Vec<N> {
     type Item = f32;

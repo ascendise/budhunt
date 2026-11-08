@@ -45,6 +45,7 @@ impl ModelShader {
 impl ShaderProgram for ModelShader {
     fn render(&self, state: &State, renderables: &Renderables, view_projection: &ViewProjection) {
         unsafe {
+            gl::Enable(gl::CULL_FACE);
             self.shadow_shader
                 .render(state, renderables, view_projection);
             for model in &renderables.models {
@@ -235,7 +236,9 @@ impl ShadowShader {
             TextureFormat::DEPTH,
         );
         texture.texture_filter(gl::NEAREST as i32, gl::NEAREST as i32);
-        texture.texture_wrap(gl::REPEAT as i32, gl::REPEAT as i32);
+        //texture.texture_wrap(gl::REPEAT as i32, gl::REPEAT as i32);
+        texture.texture_wrap(gl::CLAMP_TO_BORDER as i32, gl::CLAMP_TO_BORDER as i32);
+        //texture.border_color(&vec4!(1.0));
         let program = Program::link(&[
             Shader::compile(Self::VERTEX_SHADER, gl::VERTEX_SHADER)
                 .expect("failed to compile shadow vertex shader"),
@@ -268,6 +271,8 @@ impl ShadowShader {
 impl ShaderProgram for ShadowShader {
     fn render(&self, state: &State, renderables: &Renderables, _: &ViewProjection) {
         unsafe {
+            gl::Enable(gl::CULL_FACE);
+            gl::CullFace(gl::FRONT);
             let mut viewport = [0; 4];
             gl::GetIntegerv(gl::VIEWPORT, viewport.as_mut_ptr());
             gl::Viewport(0, 0, Self::TEXTURE_SIZE, Self::TEXTURE_SIZE);
@@ -281,6 +286,7 @@ impl ShaderProgram for ShadowShader {
             }
             Framebuffer::DEFAULT.bind();
             gl::Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+            gl::CullFace(gl::BACK);
         }
     }
 }

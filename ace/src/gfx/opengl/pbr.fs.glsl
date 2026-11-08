@@ -48,6 +48,8 @@ float geometry(vec3 normal, vec3 viewDirection, vec3 lightDirection, float rough
 float geometryGgx(vec3 normal, vec3 direction, float roughness);
 vec3 hdrToSdr(vec3 hdrColor);
 float shadow();
+/// Counter shadow acne effect
+float shadowBias();
 
 const float PI = 3.14159265;
 
@@ -158,5 +160,10 @@ float shadow() {
   coords = coords * 0.5 + 0.5;
   float closestDepth = texture(uShadowMap, coords.xy).r;
   float currentDepth = coords.z;
-  return currentDepth > closestDepth ? 1.0 : 0.0;
+  return currentDepth - shadowBias() > closestDepth ? 1.0 : 0.0;
+}
+
+float shadowBias() {
+  float bias = 0.05 * (1.0 - dot(vNormal, vLightFragPos.xyz));
+  return max(bias, 0.005);
 }

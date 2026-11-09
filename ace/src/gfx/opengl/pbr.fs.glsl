@@ -161,9 +161,21 @@ float shadow() {
   if (coords.z > 1.0) {
     return 0.0;
   }
-  float closestDepth = texture(uShadowMap, coords.xy).r;
+  float shadow = 0.0;
+  int sampleCount = 0;
+  vec2 shadowMapSize = textureSize(uShadowMap, 0);
+  vec2 texelSize = 1.0 / shadowMapSize;
   float currentDepth = coords.z;
-  return currentDepth - shadowBias() > closestDepth ? 1.0 : 0.0;
+  float bias = shadowBias();
+  for (int x = -1; x <= 1; x++) {
+    for (int y = -1; y <= 1; y++) {
+      vec2 offset = vec2(x, y) * texelSize;
+      float depth = texture(uShadowMap, coords.xy + offset).r;
+      shadow += currentDepth - bias > depth ? 1.0 : 0.0;
+      sampleCount++;
+    }
+  }
+  return shadow / sampleCount;
 }
 
 float shadowBias() {

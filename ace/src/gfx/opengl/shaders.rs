@@ -236,7 +236,7 @@ pub struct ShadowShader {
     view_projection: ViewProjection,
 }
 impl ShadowShader {
-    const TEXTURE_SIZE: i32 = 1024;
+    const TEXTURE_SIZE: i32 = 4096;
     const VERTEX_SHADER: &str = include_str!("shadow.vs.glsl");
     const FRAGMENT_SHADER: &str = include_str!("shadow.fs.glsl");
 

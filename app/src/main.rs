@@ -99,11 +99,8 @@ fn spawn_targets(
     entities: &mut ace::Entities,
 ) -> ace::physics::Collider {
     // Collider should be hitting player even if visible object is very high (for testing)
-    //let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"))
-    //    .expect("Failed to load targets");
-    let (mesh, metainfo) =
-        gfx::load_mesh_from_glb(Path::new("./ace/src/gfx/tests/TestModelWithCollider.glb"))
-            .expect("Failed to load targets");
+    let (mesh, metainfo) = gfx::load_mesh_from_glb(Path::new("./app/models/Target.glb"))
+        .expect("Failed to load targets");
     let model = renderer.load_mesh(&mesh);
     let targets = [
         vec3!(0.0, 0.0, 0.0),
@@ -120,7 +117,8 @@ fn spawn_targets(
     let collider =
         ace::physics::Collider::new(metainfo.collider.expect("no collider found for Target.glb"));
     for target in targets {
-        let position = ace::Components::Transform(ace::x3d::Transform::new(target));
+        let transform = ace::x3d::Transform::new(target);
+        let position = ace::Components::Transform(transform);
         let collider = ace::Components::Collider(collider.clone());
         let components = vec![ace::Components::Model(model.clone()), position, collider];
         entities.create_entity(components);

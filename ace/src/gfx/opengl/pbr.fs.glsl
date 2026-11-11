@@ -154,47 +154,66 @@ float geometryGgx(vec3 normal, vec3 direction, float roughness) {
   float alignment = max(dot(normal, direction), 0.0);
   return alignment / (alignment * (1.0 - roughness) + roughness);
 }
-float pcfSample(float size, vec3 coords, float bias, vec2 texelSize);
 
-float sampl(vec3 coords, float bias, vec2 texelSize) {
-  float receiverDepth = coords.z;
-  float depth = texture(uShadowMap, coords.xy).r;
-  return receiverDepth - bias > depth ? 1.0 : 0.0;
-}
+float averageBlockerDepth(vec3 receiver, vec2 texelSize, float bias);
+float pcfSample(float size, vec3 receiver, float bias, vec2 texelSize);
+float sampleShadow(vec3 receiver, vec2 offset, float bias);
 
 float shadow() {
-  vec3 coords = vLightFragPos.xyz / vLightFragPos.w;
-  coords = coords * 0.5 + 0.5;
-  float receiverDepth = coords.z;
-  if (receiverDepth > 1.0) {
+  vec3 receiver = vLightFragPos.xyz / vLightFragPos.w;
+  receiver = receiver * 0.5 + 0.5;
+  if (receiver.z > 1.0) {
     return 0.0;
   }
   vec2 shadowMapSize = textureSize(uShadowMap, 0);
   vec2 texelSize = 1.0 / shadowMapSize;
   float bias = shadowBias();
-  float blockerDepth = pcfSample(1.0, coords, bias, texelSize);
-  if (blockerDepth == 0) {
+  float blockerDepth = averageBlockerDepth(receiver, texelSize, bias); //pcfSample(1.0, receiver, bias, texelSize);
+  if (blockerDepth == 0.0) {
     return 0.0;
   }
-  float penumbra = (receiverDepth - blockerDepth) * 10.0 /*light size*/ / blockerDepth;
-  penumbra = clamp(penumbra, 1.0, 128.0);
-  return pcfSample(penumbra, coords, bias, texelSize / penumbra);
+  float lightSize = 10.0;
+  float penumbra = (receiver.z - blockerDepth) * lightSize / blockerDepth;
+  if (penumbra == 0.0) {
+    return 0.0;
+  }
+  return pcfSample(penumbra, receiver, bias, texelSize);
 }
 
-float pcfSample(float size, vec3 coords, float bias, vec2 texelSize) {
+float averageBlockerDepth(vec3 receiver, vec2 texelSize, float bias) {
+  float avgDepth = 0.0;
+  int blockerCount = 0;
+  for (float x = -1.0; x <= 1.0; x++) {
+    for (float y = -1.0; y <= 1.0; y++) {
+      vec2 offset = vec2(x, y) * texelSize;
+      float depth = texture(uShadowMap, receiver.xy + offset).r;
+      if (receiver.z - bias > depth) {
+        avgDepth += depth;
+        blockerCount++;
+      }
+    }
+  }
+  return avgDepth / max(1, blockerCount);
+}
+
+float pcfSample(float penumbra, vec3 receiver, float bias, vec2 texelSize) {
   float shadow = 0.0;
   int sampleCount = 0;
-  float receiverDepth = coords.z;
-  float steps = 2.0 / size;
-  for (float x = -1.0; x <= 1.0; x += steps) {
-    for (float y = -1.0; y <= 1.0; y += steps) {
+  float steps = 1.0 / 16.0 * penumbra;
+  penumbra /= 2;
+  for (float x = -penumbra; x <= penumbra; x += steps) {
+    for (float y = -penumbra; y <= penumbra; y += steps) {
       vec2 offset = vec2(x, y) * texelSize;
-      float depth = texture(uShadowMap, coords.xy + offset).r;
-      shadow += receiverDepth - bias > depth ? 1.0 : 0.0;
+      shadow += sampleShadow(receiver, offset, bias);
       sampleCount++;
     }
   }
   return shadow / sampleCount;
+}
+
+float sampleShadow(vec3 receiver, vec2 offset, float bias) {
+  float depth = texture(uShadowMap, receiver.xy + offset).r;
+  return receiver.z - bias > depth ? 1.0 : 0.0;
 }
 
 float shadowBias() {

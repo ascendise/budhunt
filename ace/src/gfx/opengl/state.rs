@@ -17,26 +17,26 @@ use crate::{
 pub type Idx = usize;
 #[derive(Debug, PartialEq, Eq)]
 pub struct State {
-    pub vertex_arrays: StateCollection<VertexArray>,
-    pub textures: StateCollection<Texture>,
-    pub programs: StateCollection<Program>,
+    pub vertex_arrays: Objects<VertexArray>,
+    pub textures: Objects<ImageTexture>,
+    pub programs: Objects<Program>,
 }
 impl State {
     pub fn new() -> Self {
         Self {
-            vertex_arrays: StateCollection::empty(),
-            textures: StateCollection::empty(),
-            programs: StateCollection::empty(),
+            vertex_arrays: Objects::empty(),
+            textures: Objects::empty(),
+            programs: Objects::empty(),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct StateCollection<T> {
+pub struct Objects<T> {
     values: IndexMap<Idx, T>,
     count: Count,
 }
-impl<T> StateCollection<T> {
+impl<T> Objects<T> {
     pub fn empty() -> Self {
         Self {
             values: Default::default(),
@@ -50,7 +50,7 @@ impl<T> StateCollection<T> {
         key
     }
 }
-impl<T> Index<Idx> for StateCollection<T> {
+impl<T> Index<Idx> for Objects<T> {
     type Output = T;
 
     fn index(&self, index: Idx) -> &Self::Output {
@@ -80,7 +80,10 @@ impl Count {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct VertexArray(u32);
+pub struct VertexArray {
+    name: u32,
+    draw: Draw,
+}
 impl VertexArray {
     pub fn new(vertices: &[Vertex], indices: Option<&[u32]>) -> Self {
         unsafe {
@@ -91,10 +94,16 @@ impl VertexArray {
             let element_buffer = indices.map(Self::create_element_array_buffer);
             gl::BindVertexArray(0);
             gl::DeleteBuffers(1, &vertex_buffer as *const u32);
-            if let Some(element_buffer) = element_buffer {
+            let draw = if let Some(element_buffer) = element_buffer {
                 gl::DeleteBuffers(1, &element_buffer as *const u32);
+                Draw::Elements(indices.unwrap().len())
+            } else {
+                Draw::Arrays(vertices.len())
+            };
+            Self {
+                name: vertex_array,
+                draw,
             }
-            Self(vertex_array)
         }
     }
 
@@ -156,7 +165,21 @@ impl VertexArray {
         }
     }
 
-    pub fn simple_new(vertices: &[math::Vec3]) -> Self {
+    pub fn simple(vertices: &[math::Vec3]) -> Self {
+        Self {
+            name: Self::create_vertex_array(vertices),
+            draw: Draw::Arrays(vertices.len()),
+        }
+    }
+
+    pub fn line(vertices: &[math::Vec3]) -> Self {
+        Self {
+            name: Self::create_vertex_array(vertices),
+            draw: Draw::Lines(vertices.len()),
+        }
+    }
+
+    pub fn create_vertex_array(vertices: &[math::Vec3]) -> u32 {
         unsafe {
             let mut vertex_array = 0;
             gl::GenVertexArrays(1, &mut vertex_array);
@@ -164,7 +187,7 @@ impl VertexArray {
             let vertex_buffer = Self::create_simple_vertex_buffer(vertices);
             gl::BindVertexArray(0);
             gl::DeleteBuffers(1, &vertex_buffer as *const u32);
-            Self(vertex_array)
+            vertex_array
         }
     }
 
@@ -194,29 +217,47 @@ impl VertexArray {
 
     pub fn bind(&self) {
         unsafe {
-            gl::BindVertexArray(self.0);
+            gl::BindVertexArray(self.name);
         }
+    }
+
+    pub fn draw(&self) {
+        self.draw.draw();
     }
 }
 impl Drop for VertexArray {
     fn drop(&mut self) {
         unsafe {
-            gl::DeleteVertexArrays(1, &self.0);
+            gl::DeleteVertexArrays(1, &self.name);
+        }
+    }
+}
+#[derive(Debug, PartialEq, Eq)]
+enum Draw {
+    Arrays(usize),
+    Elements(usize),
+    Lines(usize),
+}
+impl Draw {
+    pub fn draw(&self) {
+        unsafe {
+            match self {
+                Draw::Arrays(vertices) => gl::DrawArrays(gl::TRIANGLES, 0, *vertices as i32),
+                Draw::Elements(indices) => {
+                    gl::DrawElements(gl::TRIANGLES, *indices as i32, gl::UNSIGNED_INT, null())
+                }
+                Draw::Lines(points) => gl::DrawArrays(gl::LINES, 0, *points as i32),
+            }
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Texture(u32);
-impl Texture {
-    pub fn new<T>(
-        image: &Image<T>,
-        data_format: u32,
-        format: &TextureFormat,
-        generate_mipmap: bool,
-    ) -> Self {
+pub struct ImageTexture(u32);
+impl ImageTexture {
+    pub fn new<T>(image: &Image<T>, format: &TextureFormat, generate_mipmap: bool) -> Self {
         unsafe {
-            let texture = Self::generate_texture(std::slice::from_ref(image), data_format, format);
+            let texture = Self::generate_texture(std::slice::from_ref(image), format);
             if generate_mipmap {
                 gl::GenerateMipmap(gl::TEXTURE_2D);
             }
@@ -224,7 +265,7 @@ impl Texture {
         }
     }
 
-    fn generate_texture<T>(images: &[Image<T>], data_format: u32, format: &TextureFormat) -> u32 {
+    fn generate_texture<T>(images: &[Image<T>], format: &TextureFormat) -> u32 {
         unsafe {
             let mut texture = 0;
             gl::GenTextures(1, &mut texture);
@@ -233,12 +274,12 @@ impl Texture {
                 gl::TexImage2D(
                     gl::TEXTURE_2D,
                     i as i32,
-                    format.0,
+                    format.internal_format,
                     image.width as i32,
                     image.height as i32,
                     0,
-                    format.1,
-                    data_format,
+                    format.format,
+                    format.data_type,
                     image.data.as_ptr() as *const _,
                 );
             }
@@ -246,16 +287,12 @@ impl Texture {
         }
     }
 
-    pub fn new_with_levels<T>(
-        images: &[Image<T>],
-        data_format: u32,
-        format: &TextureFormat,
-    ) -> Self {
-        let texture = Self::generate_texture(images, data_format, format);
-        Texture(texture)
+    pub fn new_with_levels<T>(images: &[Image<T>], format: &TextureFormat) -> Self {
+        let texture = Self::generate_texture(images, format);
+        ImageTexture(texture)
     }
 
-    /// Binds [Texture] to [texture unit](gl::TEXTURE0)
+    /// Binds [ImageTexture] to [texture unit](gl::TEXTURE0)
     pub fn bind(&self, unit: usize) {
         unsafe {
             let unit = gl::TEXTURE0 + unit as u32;
@@ -272,17 +309,159 @@ impl Texture {
         }
     }
 }
-impl Drop for Texture {
+impl Drop for ImageTexture {
     fn drop(&mut self) {
         unsafe { gl::DeleteTextures(1, &self.0) }
     }
 }
-pub struct TextureFormat(gl::types::GLint, gl::types::GLenum);
-impl TextureFormat {
-    pub const SRGB_ALPHA: TextureFormat = TextureFormat(gl::SRGB_ALPHA as i32, gl::RGBA);
-    pub const RGB: TextureFormat = TextureFormat(gl::RGB8 as i32, gl::RGB);
-    pub const RGB32F: TextureFormat = TextureFormat(gl::RGB32F as i32, gl::RGB);
+pub struct TextureFormat {
+    internal_format: gl::types::GLint,
+    format: gl::types::GLenum,
+    data_type: gl::types::GLuint,
 }
+impl TextureFormat {
+    pub const SRGB_ALPHA: &TextureFormat =
+        &TextureFormat::new(gl::SRGB_ALPHA as i32, gl::RGBA, gl::UNSIGNED_BYTE);
+    pub const RGB: &TextureFormat =
+        &TextureFormat::new(gl::RGB8 as i32, gl::RGB, gl::UNSIGNED_BYTE);
+    pub const RGB32F: &TextureFormat = &TextureFormat::new(gl::RGB32F as i32, gl::RGB, gl::FLOAT);
+    pub const DEPTH: &TextureFormat =
+        &TextureFormat::new(gl::DEPTH_COMPONENT as i32, gl::DEPTH_COMPONENT, gl::FLOAT);
+
+    pub const fn new(
+        internal_format: gl::types::GLint,
+        format: gl::types::GLenum,
+        data_type: gl::types::GLuint,
+    ) -> Self {
+        Self {
+            internal_format,
+            format,
+            data_type,
+        }
+    }
+}
+
+pub struct BufferTexture {
+    name: gl::types::GLuint,
+    buffer: Framebuffer,
+}
+impl BufferTexture {
+    pub fn new(
+        buffer: Framebuffer,
+        attachment: gl::types::GLuint,
+        width: i32,
+        height: i32,
+        format: &TextureFormat,
+    ) -> Self {
+        unsafe {
+            let texture = Self::create_texture(width, height, format);
+            buffer.bind();
+            gl::FramebufferTexture2D(gl::FRAMEBUFFER, attachment, gl::TEXTURE_2D, texture, 0);
+            Self {
+                name: texture,
+                buffer,
+            }
+        }
+    }
+
+    fn create_texture(width: i32, height: i32, format: &TextureFormat) -> u32 {
+        let mut texture = 0;
+        unsafe {
+            gl::GenTextures(1, &mut texture);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,
+                format.internal_format,
+                width,
+                height,
+                0,
+                format.format,
+                format.data_type,
+                null(),
+            );
+        }
+        texture
+    }
+
+    /// Binds [BufferTexture] to [texture unit](gl::TEXTURE0)
+    pub fn bind(&self, unit: usize) {
+        unsafe {
+            let unit = gl::TEXTURE0 + unit as u32;
+            gl::ActiveTexture(unit);
+            gl::BindTexture(gl::TEXTURE_2D, self.name);
+        }
+    }
+
+    pub fn texture_filter(&self, minification: gl::types::GLint, magnification: gl::types::GLint) {
+        unsafe {
+            gl::BindTexture(gl::TEXTURE_2D, self.name);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, minification);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, magnification);
+        }
+    }
+
+    pub fn texture_wrap(&self, wrap_s: gl::types::GLint, wrap_t: gl::types::GLint) {
+        unsafe {
+            gl::BindTexture(gl::TEXTURE_2D, self.name);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, wrap_s);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, wrap_t);
+        }
+    }
+
+    pub fn border_color(&self, color: &math::Vec4) {
+        unsafe {
+            gl::BindTexture(gl::TEXTURE_2D, self.name);
+            let color: [f32; 4] = color.into();
+            gl::TexParameterfv(gl::TEXTURE_2D, gl::TEXTURE_BORDER_COLOR, color.as_ptr());
+        }
+    }
+
+    pub fn buffer(&self) -> &Framebuffer {
+        &self.buffer
+    }
+}
+impl Drop for BufferTexture {
+    fn drop(&mut self) {
+        unsafe { gl::DeleteTextures(1, &self.name) }
+    }
+}
+pub struct Framebuffer(gl::types::GLuint);
+impl Framebuffer {
+    pub const DEFAULT: &Framebuffer = &Self(0);
+
+    pub fn new() -> Self {
+        unsafe {
+            let mut fbo = 0;
+            gl::GenFramebuffers(1, &mut fbo);
+            Self(fbo)
+        }
+    }
+
+    pub fn bind(&self) {
+        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, self.0) }
+    }
+
+    pub fn buffers(&self, draw: gl::types::GLenum, read: gl::types::GLenum) {
+        unsafe {
+            self.bind();
+            gl::DrawBuffer(draw);
+            gl::ReadBuffer(read);
+        }
+    }
+}
+impl Drop for Framebuffer {
+    fn drop(&mut self) {
+        if self.0 == 0 {
+            // we don't want to delete the default framebuffer
+            return;
+        }
+        unsafe {
+            gl::DeleteFramebuffers(1, &self.0);
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Program(u32);
 impl Program {
@@ -323,45 +502,8 @@ impl Program {
         }
     }
 
-    pub fn location(&self, key: &str) -> Option<Location> {
+    pub fn location(&self, key: &str) -> Result<Location, String> {
         Location::find(self, key)
-    }
-}
-pub type Uniforms = IndexMap<Location, Uniform>;
-pub enum Uniform {
-    Vec3(math::Vec3),
-    Mat4(math::Matrix4),
-    Float(f32),
-    Int(i32),
-}
-impl Uniform {
-    pub fn set(&self, location: &Location) {
-        unsafe {
-            match self {
-                Uniform::Vec3(vec3) => gl::Uniform3f(location.0, vec3.x(), vec3.y(), vec3.z()),
-                Uniform::Mat4(mat4) => {
-                    gl::UniformMatrix4fv(location.0, 1, gl::TRUE, mat4.data.as_ptr() as *const _)
-                }
-                Uniform::Float(float) => gl::Uniform1f(location.0, *float),
-                Uniform::Int(int) => gl::Uniform1i(location.0, *int),
-            }
-        }
-    }
-}
-
-#[derive(Eq, Hash, PartialEq)]
-pub struct Location(gl::types::GLint);
-impl Location {
-    pub fn find(program: &Program, uniform_key: &str) -> Option<Self> {
-        let uniform_key = CString::new(uniform_key).unwrap();
-        unsafe {
-            let location = gl::GetUniformLocation(program.0, uniform_key.as_ptr());
-            if location == -1 {
-                return None;
-            }
-            let location = Self(location);
-            Some(location)
-        }
     }
 }
 
@@ -396,6 +538,66 @@ impl Shader {
 impl Drop for Shader {
     fn drop(&mut self) {
         unsafe { gl::DeleteShader(self.0) }
+    }
+}
+pub type Uniforms = IndexMap<Location, Uniform>;
+pub enum Uniform {
+    Vec3(math::Vec3),
+    Mat4(math::Matrix4),
+    Float(f32),
+    Int(i32),
+}
+impl Uniform {
+    pub fn set(&self, location: &Location) {
+        unsafe {
+            match self {
+                Uniform::Vec3(vec3) => gl::Uniform3f(location.0, vec3.x(), vec3.y(), vec3.z()),
+                Uniform::Mat4(mat4) => {
+                    gl::UniformMatrix4fv(location.0, 1, gl::TRUE, mat4.data.as_ptr() as *const _)
+                }
+                Uniform::Float(float) => gl::Uniform1f(location.0, *float),
+                Uniform::Int(int) => gl::Uniform1i(location.0, *int),
+            }
+        }
+    }
+}
+impl From<math::Vec3> for Uniform {
+    fn from(value: math::Vec3) -> Self {
+        Self::Vec3(value)
+    }
+}
+impl From<math::Matrix4> for Uniform {
+    fn from(value: math::Matrix4) -> Self {
+        Self::Mat4(value)
+    }
+}
+impl From<f32> for Uniform {
+    fn from(value: f32) -> Self {
+        Self::Float(value)
+    }
+}
+impl From<i32> for Uniform {
+    fn from(value: i32) -> Self {
+        Self::Int(value)
+    }
+}
+
+#[derive(Eq, Hash, PartialEq)]
+pub struct Location(gl::types::GLint);
+impl Location {
+    pub fn find(program: &Program, uniform_key: &str) -> Result<Location, String> {
+        let c_uniform_key = CString::new(uniform_key).unwrap();
+        unsafe {
+            let location = gl::GetUniformLocation(program.0, c_uniform_key.as_ptr());
+            if location >= 0 {
+                let location = Self(location);
+                Ok(location)
+            } else {
+                Err(format!(
+                    "key '{uniform_key}' was not found in active shader program!"
+                ))
+            }
+        }
     }
 }
 

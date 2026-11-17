@@ -1,5 +1,4 @@
 use indexmap::indexmap;
-use std::ptr::null;
 use std::sync::Arc;
 
 use super::state::*;
@@ -7,72 +6,56 @@ use crate::gfx::*;
 
 pub static TONEMAPPING_SHADER: &str = include_str!("tonemapping.glsl");
 
-pub trait OpenGlShader {
-    fn render(&self, state: &State, renderables: &[Renderable], view_projection: &ViewProjection);
-}
-
-pub struct ViewProjection {
-    pub view: math::Matrix4,
-    pub projection: math::Matrix4,
+pub trait ShaderProgram {
+    fn render(&self, state: &State, renderables: &Renderables, camera: &Camera);
 }
 
 pub struct ModelShader {
     skybox: Arc<Skybox>,
     program: Program,
+    shadow_shader: ShadowShader,
 }
 impl ModelShader {
-    const VERTEX_SHADER_PBR: &str = include_str!("pbr.vs.glsl");
-    const FRAGMENT_SHADER_PBR: &str = include_str!("pbr.fs.glsl");
+    const VERTEX_SHADER: &str = include_str!("pbr.vs.glsl");
+    const FRAGMENT_SHADER: &str = include_str!("pbr.fs.glsl");
 
     pub fn new(skybox: Arc<Skybox>) -> Self {
         let program = Program::link(&[
-            Shader::compile(Self::VERTEX_SHADER_PBR, gl::VERTEX_SHADER)
+            Shader::compile(Self::VERTEX_SHADER, gl::VERTEX_SHADER)
                 .expect("failed to compile pbr vertex shader"),
-            Shader::compile(Self::FRAGMENT_SHADER_PBR, gl::FRAGMENT_SHADER)
+            Shader::compile(Self::FRAGMENT_SHADER, gl::FRAGMENT_SHADER)
                 .expect("failed to compile pbr fragment shader"),
             Shader::compile(TONEMAPPING_SHADER, gl::FRAGMENT_SHADER)
                 .expect("failed to compile tonemapping shader"),
         ])
         .expect("failed to link pbr shader program");
-        Self { skybox, program }
+        Self {
+            skybox,
+            program,
+            shadow_shader: ShadowShader::new(),
+        }
     }
 }
-impl OpenGlShader for ModelShader {
-    fn render(&self, state: &State, renderables: &[Renderable], view_projection: &ViewProjection) {
+impl ShaderProgram for ModelShader {
+    fn render(&self, state: &State, renderables: &Renderables, camera: &Camera) {
         unsafe {
-            let models: Vec<Model> = renderables
-                .iter()
-                .filter_map(|m| maybe_component!(m, Renderable::Model))
-                .cloned()
-                .collect();
-            let lights: Vec<Light> = renderables
-                .iter()
-                .filter_map(|m| maybe_component!(m, Renderable::Light))
-                .cloned()
-                .collect();
-            for model in &models {
+            gl::Enable(gl::CULL_FACE);
+            self.shadow_shader.render(state, renderables, camera);
+            for model in &renderables.models {
                 for node in &model.nodes {
-                    state.vertex_arrays[node.vao].bind();
+                    let vao = &state.vertex_arrays[node.vao];
+                    vao.bind();
                     let program = &self.program;
                     let uniforms = self.get_model_shader_uniforms(
                         state,
-                        &lights,
+                        &renderables.lights,
                         program,
                         node,
                         model,
-                        view_projection,
+                        camera,
                     );
                     program.use_and_set(&uniforms);
-                    if node.indices > 0 {
-                        gl::DrawElements(
-                            gl::TRIANGLES,
-                            node.indices as i32,
-                            gl::UNSIGNED_INT,
-                            null(),
-                        );
-                    } else {
-                        gl::DrawArrays(gl::TRIANGLES, 0, node.vertices as i32);
-                    }
+                    vao.draw();
                 }
             }
         }
@@ -86,7 +69,7 @@ impl ModelShader {
         program: &Program,
         node: &ModelNode,
         model: &Model,
-        view_projection: &ViewProjection,
+        camera: &Camera,
     ) -> IndexMap<Location, Uniform> {
         let mut uniforms = IndexMap::new();
         let mut texture_units = Count::init();
@@ -96,9 +79,10 @@ impl ModelShader {
             node,
             &model.transform,
             &mut texture_units,
-            view_projection,
+            camera,
         );
         self.add_skybox_uniforms(&mut uniforms, &mut texture_units);
+        self.add_shadow_uniforms(&mut uniforms, &mut texture_units, camera);
         let mut point_count = 0;
         for light in lights {
             match light {
@@ -108,7 +92,7 @@ impl ModelShader {
                         program.location(&format!("{key}.color")).unwrap(),
                         Uniform::Vec3(light.color),
                     );
-                    let position = Self::to_view_space(&view_projection.view, &light.position);
+                    let position = Self::to_view_space(&camera.view(), &light.position);
                     uniforms.insert(
                         program.location(&format!("{key}.position")).unwrap(),
                         Uniform::Vec3(position),
@@ -136,22 +120,22 @@ impl ModelShader {
         model: &ModelNode,
         transform: &Transform,
         texture_units: &mut Count,
-        view_projection: &ViewProjection,
+        camera: &Camera,
     ) {
         uniforms.insert(
             self.program.location("uProjection").unwrap(),
-            Uniform::Mat4(view_projection.projection),
+            Uniform::Mat4((&camera.projection).into()),
         );
         uniforms.insert(
             self.program.location("uView").unwrap(),
-            Uniform::Mat4(view_projection.view),
+            Uniform::Mat4(camera.view()),
         );
         let model_matrix = transform.model_matrix();
         uniforms.insert(
             self.program.location("uModel").unwrap(),
             Uniform::Mat4(model_matrix),
         );
-        let normal_matrix = Self::create_normal_matrix(&model_matrix, &view_projection.view);
+        let normal_matrix = Self::create_normal_matrix(&model_matrix, &camera.view());
         uniforms.insert(
             self.program.location("uNormal").unwrap(),
             Uniform::Mat4(normal_matrix),
@@ -197,6 +181,136 @@ impl ModelShader {
             Uniform::Int(texture_units.last() as i32),
         );
     }
+
+    fn add_shadow_uniforms(
+        &self,
+        uniforms: &mut IndexMap<Location, Uniform>,
+        texture_units: &mut Count,
+        player: &Camera,
+    ) {
+        let player = player.position;
+        let camera = self.shadow_shader.camera.position;
+        let camera = self.shadow_shader.camera.clone_at(vec3!(
+            camera.x() + player.x(),
+            camera.y(),
+            camera.z() + player.z()
+        ));
+        uniforms.insert(
+            self.program.location("uLightViewProjection").unwrap(),
+            Uniform::Mat4(camera.view_projection()),
+        );
+        let shadow_map = texture_units.increment();
+        self.shadow_shader.texture().bind(shadow_map);
+        uniforms.insert(
+            self.program.location("uShadowMap").unwrap(),
+            Uniform::Int(shadow_map as i32),
+        );
+    }
+}
+
+pub struct ShadowShader {
+    texture: Arc<BufferTexture>,
+    program: Program,
+    camera: Camera,
+}
+impl ShadowShader {
+    const TEXTURE_SIZE: i32 = 4096 * 2;
+    const VERTEX_SHADER: &str = include_str!("shadow.vs.glsl");
+    const FRAGMENT_SHADER: &str = include_str!("shadow.fs.glsl");
+
+    pub fn new() -> Self {
+        let buffer = Framebuffer::new();
+        buffer.buffers(gl::NONE, gl::NONE);
+        let shadow_map = BufferTexture::new(
+            buffer,
+            gl::DEPTH_ATTACHMENT,
+            Self::TEXTURE_SIZE,
+            Self::TEXTURE_SIZE,
+            TextureFormat::DEPTH,
+        );
+        shadow_map.texture_filter(gl::NEAREST as i32, gl::NEAREST as i32);
+        shadow_map.texture_wrap(gl::CLAMP_TO_BORDER as i32, gl::CLAMP_TO_BORDER as i32);
+        shadow_map.border_color(&vec4!(1.0));
+        let program = Program::link(&[
+            Shader::compile(Self::VERTEX_SHADER, gl::VERTEX_SHADER)
+                .expect("failed to compile shadow vertex shader"),
+            Shader::compile(Self::FRAGMENT_SHADER, gl::FRAGMENT_SHADER)
+                .expect("failed to compile shadow fragment shader"),
+        ])
+        .expect("failed to link shadow shader program");
+        Self {
+            texture: Arc::new(shadow_map),
+            program,
+            camera: Self::create_camera(),
+        }
+    }
+
+    fn create_camera() -> Camera {
+        const LIGHT_POSITION: math::Vec3 = vec3!(-2.0, 4.0, -1.0);
+        let projection = Orthographic {
+            left: -32.0,
+            right: 32.0,
+            top: 32.0,
+            bottom: -32.0,
+            near: -32.0,
+            far: 32.0,
+        };
+        Camera {
+            position: LIGHT_POSITION,
+            direction: -LIGHT_POSITION,
+            projection: Projection::Orthographic(projection),
+        }
+    }
+
+    pub fn texture(&self) -> &Arc<BufferTexture> {
+        &self.texture
+    }
+}
+impl ShaderProgram for ShadowShader {
+    fn render(&self, state: &State, renderables: &Renderables, player: &Camera) {
+        unsafe {
+            gl::Enable(gl::CULL_FACE);
+            gl::CullFace(gl::FRONT);
+            let mut viewport = [0; 4];
+            gl::GetIntegerv(gl::VIEWPORT, viewport.as_mut_ptr());
+            gl::Viewport(0, 0, Self::TEXTURE_SIZE, Self::TEXTURE_SIZE);
+            self.texture.buffer().bind();
+            gl::Clear(gl::DEPTH_BUFFER_BIT);
+            for model in &renderables.models {
+                let model_matrix = model.transform.model_matrix();
+                for node in &model.nodes {
+                    self.render_depth(state, model_matrix, node, player);
+                }
+            }
+            Framebuffer::DEFAULT.bind();
+            gl::Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+            gl::CullFace(gl::BACK);
+        }
+    }
+}
+impl ShadowShader {
+    fn render_depth(
+        &self,
+        state: &State,
+        model_matrix: math::Matrix4,
+        node: &ModelNode,
+        player: &Camera,
+    ) {
+        let vao = &state.vertex_arrays[node.vao];
+        vao.bind();
+        let player = player.position;
+        let camera = self.camera.position;
+        let camera = self.camera.clone_at(vec3!(
+            camera.x() + player.x(),
+            camera.y(),
+            camera.z() + player.z()
+        ));
+        self.program.use_and_set(&indexmap! {
+            self.program.location("uLightViewProjection").unwrap() => Uniform::Mat4(camera.view_projection()),
+            self.program.location("uModel").unwrap() => Uniform::Mat4(model_matrix)
+        });
+        vao.draw();
+    }
 }
 
 pub struct SkyboxShader {
@@ -204,14 +318,14 @@ pub struct SkyboxShader {
     program: Program,
 }
 impl SkyboxShader {
-    const VERTEX_SHADER_SKYBOX: &str = include_str!("skybox.vs.glsl");
-    const FRAGMENT_SHADER_SKYBOX: &str = include_str!("skybox.fs.glsl");
+    const VERTEX_SHADER: &str = include_str!("skybox.vs.glsl");
+    const FRAGMENT_SHADER: &str = include_str!("skybox.fs.glsl");
 
     pub fn new(skybox: Arc<Skybox>) -> Self {
         let program = Program::link(&[
-            Shader::compile(Self::VERTEX_SHADER_SKYBOX, gl::VERTEX_SHADER)
+            Shader::compile(Self::VERTEX_SHADER, gl::VERTEX_SHADER)
                 .expect("failed to compile skybox vertex shader"),
-            Shader::compile(Self::FRAGMENT_SHADER_SKYBOX, gl::FRAGMENT_SHADER)
+            Shader::compile(Self::FRAGMENT_SHADER, gl::FRAGMENT_SHADER)
                 .expect("failed to compile skybox fragment shader"),
             Shader::compile(TONEMAPPING_SHADER, gl::FRAGMENT_SHADER)
                 .expect("failed to compile tonemapping shader"),
@@ -220,21 +334,21 @@ impl SkyboxShader {
         Self { skybox, program }
     }
 }
-impl OpenGlShader for SkyboxShader {
-    fn render(&self, _: &State, _: &[Renderable], view_projection: &ViewProjection) {
+impl ShaderProgram for SkyboxShader {
+    fn render(&self, _: &State, _: &Renderables, camera: &Camera) {
         unsafe {
             self.skybox.vao.bind();
             self.skybox.image.bind(0);
-            let view = Self::remove_translation(&view_projection.view);
+            let view = Self::remove_translation(&camera.view());
             self.program.use_and_set(&indexmap! {
                 self.program.location("uSkybox").unwrap() => Uniform::Int(0),
                 self.program.location("uView").unwrap() => Uniform::Mat4(view),
-                self.program.location("uProjection").unwrap() => Uniform::Mat4(view_projection.projection),
+                self.program.location("uProjection").unwrap() => Uniform::Mat4((&camera.projection).into()),
                 self.program.location("uGamma").unwrap() => Uniform::Float(2.2),
                 self.program.location("uExposure").unwrap() => Uniform::Float(0.1),
             });
             gl::DepthFunc(gl::LEQUAL);
-            gl::DrawArrays(gl::TRIANGLES, 0, Skybox::VERTICES.len() as i32);
+            self.skybox.vao.draw();
             gl::DepthFunc(gl::LESS);
         }
     }
@@ -253,10 +367,10 @@ impl SkyboxShader {
 #[derive(Debug)]
 pub struct Skybox {
     vao: VertexArray,
-    image: Texture,
-    diffuse: Texture,
-    specular: Texture,
-    brdf_lut: Texture,
+    image: ImageTexture,
+    diffuse: ImageTexture,
+    specular: ImageTexture,
+    brdf_lut: ImageTexture,
 }
 impl Skybox {
     pub const VERTICES: [math::Vec3; 36] = [
@@ -299,19 +413,13 @@ impl Skybox {
     ];
 
     pub fn new(skybox: &gfx::Ibl) -> Self {
-        let vao = VertexArray::simple_new(&Skybox::VERTICES);
-        let image = Texture::new(&skybox.skybox, gl::FLOAT, &TextureFormat::RGB32F, true);
+        let vao = VertexArray::simple(&Skybox::VERTICES);
+        let image = ImageTexture::new(&skybox.skybox, TextureFormat::RGB32F, true);
         image.texture_filter(gl::LINEAR as i32, gl::LINEAR as i32);
-        let diffuse = Texture::new(&skybox.diffuse, gl::FLOAT, &TextureFormat::RGB32F, true);
-        let specular =
-            Texture::new_with_levels(&skybox.specular, gl::FLOAT, &TextureFormat::RGB32F);
+        let diffuse = ImageTexture::new(&skybox.diffuse, TextureFormat::RGB32F, true);
+        let specular = ImageTexture::new_with_levels(&skybox.specular, TextureFormat::RGB32F);
         specular.texture_filter(gl::LINEAR_MIPMAP_LINEAR as i32, gl::LINEAR as i32);
-        let brdf_lut = Texture::new(
-            &skybox.brdf_lut,
-            gl::UNSIGNED_BYTE,
-            &TextureFormat::RGB,
-            true,
-        );
+        let brdf_lut = ImageTexture::new(&skybox.brdf_lut, TextureFormat::RGB, true);
         Self {
             vao,
             image,
@@ -333,47 +441,110 @@ impl Default for LineShader {
 }
 impl LineShader {
     const LINE: [math::Vec3; 2] = [vec3!(0.0), vec3!(0.0, 0.0, -100.0)];
-    const LINE_VERTICES_LEN: i32 = 2;
 
-    const VERTEX_SHADER_LINE: &str = include_str!("line.vs.glsl");
-    const FRAGMENT_SHADER_LINE: &str = include_str!("line.fs.glsl");
+    const VERTEX_SHADER: &str = include_str!("line.vs.glsl");
+    const FRAGMENT_SHADER: &str = include_str!("line.fs.glsl");
 
     pub fn new() -> Self {
-        let line = VertexArray::simple_new(&Self::LINE);
+        let line = VertexArray::line(&Self::LINE);
         let program = Program::link(&[
-            Shader::compile(Self::VERTEX_SHADER_LINE, gl::VERTEX_SHADER)
+            Shader::compile(Self::VERTEX_SHADER, gl::VERTEX_SHADER)
                 .expect("failed to compile line vertex shader"),
-            Shader::compile(Self::FRAGMENT_SHADER_LINE, gl::FRAGMENT_SHADER)
+            Shader::compile(Self::FRAGMENT_SHADER, gl::FRAGMENT_SHADER)
                 .expect("failed to compile line fragment shader"),
         ])
         .expect("failed to link line shader program");
         Self { line, program }
     }
 }
-impl OpenGlShader for LineShader {
-    fn render(&self, _: &State, renderables: &[Renderable], view_projection: &ViewProjection) {
-        let lines: Vec<Line> = renderables
-            .iter()
-            .filter_map(|r| maybe_component!(r, Renderable::Line))
-            .cloned()
-            .collect();
+impl ShaderProgram for LineShader {
+    fn render(&self, _: &State, renderables: &Renderables, camera: &Camera) {
         unsafe {
             gl::Enable(gl::LINE_SMOOTH);
             self.line.bind();
-            for line in &lines {
+            for line in &renderables.lines {
                 let model_matrix =
                     math::Matrix4::translation(&line.transform.position) * line.transform.rotation;
                 self.program.use_and_set(&indexmap! {
-                self.program.location("uProjection").unwrap() => Uniform::Mat4(view_projection.projection),
-                self.program.location("uView").unwrap() => Uniform::Mat4(view_projection.view),
+                self.program.location("uProjection").unwrap() => Uniform::Mat4((&camera.projection).into()),
+                self.program.location("uView").unwrap() => Uniform::Mat4(camera.view()),
                 self.program.location("uModel").unwrap() => Uniform::Mat4(model_matrix),
                 self.program.location("uColor").unwrap() => Uniform::Vec3(vec3!(1.0, 0.0, 0.0))
             });
                 gl::LineWidth(2.0);
-                gl::DrawArrays(gl::LINES, 0, Self::LINE_VERTICES_LEN);
-                // vertex array
+                self.line.draw();
             }
             gl::Disable(gl::LINE_SMOOTH);
         }
+    }
+}
+
+#[allow(unused, reason = "used for debugging")]
+pub struct DebugBufferTextureShader {
+    quad: VertexArray,
+    texture: Arc<BufferTexture>,
+    program: Program,
+}
+#[allow(unused, reason = "used for debugging")]
+impl DebugBufferTextureShader {
+    const QUAD_VERTICES: &[Vertex] = &[
+        Vertex {
+            position: vec3!(-1.0, 1.0),
+            normal: vec3!(0.0),
+            texture: vec2!(0.0, 1.0),
+        },
+        Vertex {
+            position: vec3!(-1.0, -1.0),
+            normal: vec3!(0.0),
+            texture: vec2!(0.0, 0.0),
+        },
+        Vertex {
+            position: vec3!(1.0, -1.0),
+            normal: vec3!(0.0),
+            texture: vec2!(1.0, 0.0),
+        },
+        Vertex {
+            position: vec3!(-1.0, 1.0),
+            normal: vec3!(0.0),
+            texture: vec2!(0.0, 1.0),
+        },
+        Vertex {
+            position: vec3!(1.0, -1.0),
+            normal: vec3!(0.0),
+            texture: vec2!(1.0, 0.0),
+        },
+        Vertex {
+            position: vec3!(1.0, 1.0),
+            normal: vec3!(0.0),
+            texture: vec2!(1.0, 1.0),
+        },
+    ];
+    const VERTEX_SHADER: &str = include_str!("debug_texture.vs.glsl");
+    const FRAGMENT_SHADER: &str = include_str!("debug_texture.fs.glsl");
+
+    pub fn new(texture: Arc<BufferTexture>) -> Self {
+        let quad = VertexArray::new(Self::QUAD_VERTICES, None);
+        let program = Program::link(&[
+            Shader::compile(Self::VERTEX_SHADER, gl::VERTEX_SHADER)
+                .expect("failed to compile debug_texture vertex shader"),
+            Shader::compile(Self::FRAGMENT_SHADER, gl::FRAGMENT_SHADER)
+                .expect("failed to compile debug_texture fragment shader"),
+        ])
+        .unwrap();
+        Self {
+            quad,
+            texture,
+            program,
+        }
+    }
+}
+impl ShaderProgram for DebugBufferTextureShader {
+    fn render(&self, _: &State, _: &Renderables, _: &Camera) {
+        self.quad.bind();
+        self.texture.bind(0);
+        self.program.use_and_set(&indexmap! {
+            self.program.location("uTexture").unwrap() => Uniform::Int(0)
+        });
+        self.quad.draw();
     }
 }

@@ -27,20 +27,12 @@ impl SpyRenderer {
     }
 }
 impl Renderer for SpyRenderer {
-    fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
+    fn render(&self, camera: &Camera, renderables: &Renderables) {
         let frame = Frame {
-            projection: projection.clone(),
+            projection: component!(camera.projection.clone(), Projection::Perspective),
             camera: camera.clone(),
-            models: renderables
-                .iter()
-                .filter_map(|m| maybe_component!(m, Renderable::Model))
-                .cloned()
-                .collect(),
-            lights: renderables
-                .iter()
-                .filter_map(|m| maybe_component!(m, Renderable::Light))
-                .cloned()
-                .collect(),
+            models: renderables.models.to_vec(),
+            lights: renderables.lights.to_vec(),
         };
         let mut frames = self.frames.lock().unwrap();
         frames.push(frame);
@@ -49,7 +41,7 @@ impl Renderer for SpyRenderer {
 
 #[derive(Debug, Clone, PartialEq)]
 struct Frame {
-    projection: Projection,
+    projection: Perspective,
     camera: Camera,
     models: Vec<Model>,
     lights: Vec<Light>,

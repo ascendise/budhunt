@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use crate::gfx::{
-    opengl::{
-        shaders::{OpenGlShader, ViewProjection},
-        state::*,
-    },
+    opengl::{shaders::ShaderProgram, state::*},
     *,
 };
 
@@ -29,7 +26,7 @@ macro_rules! assert_no_gl_error {
 
 pub struct OpenGlRenderer {
     state: State,
-    shaders: Vec<Box<dyn OpenGlShader>>,
+    shaders: Vec<Box<dyn ShaderProgram>>,
 }
 impl OpenGlRenderer {
     pub fn init(skybox: Arc<shaders::Skybox>) -> Self {
@@ -63,19 +60,10 @@ impl OpenGlRenderer {
 
     fn load_mesh_node(&mut self, node: &MeshNode) -> ModelNode {
         let vao = self.set_mesh_vao(node);
-        let albedo = Texture::new(
-            &node.albedo,
-            gl::UNSIGNED_BYTE,
-            &TextureFormat::SRGB_ALPHA,
-            true,
-        );
+        let albedo = ImageTexture::new(&node.albedo, TextureFormat::SRGB_ALPHA, true);
         let albedo = self.state.textures.insert(albedo);
-        let metallic_roughness_ao = Texture::new(
-            &node.metallic_roughness_ao,
-            gl::UNSIGNED_BYTE,
-            &TextureFormat::RGB,
-            true,
-        );
+        let metallic_roughness_ao =
+            ImageTexture::new(&node.metallic_roughness_ao, TextureFormat::RGB, true);
         let metallic_roughness_ao = self.state.textures.insert(metallic_roughness_ao);
         ModelNode {
             vao,
@@ -94,14 +82,10 @@ impl OpenGlRenderer {
     }
 }
 impl Renderer for OpenGlRenderer {
-    fn render(&self, projection: &Projection, camera: &Camera, renderables: &[Renderable]) {
+    fn render(&self, camera: &Camera, renderables: &Renderables) {
         unsafe { gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT) };
-        let view_projection = ViewProjection {
-            view: camera.to_view_matrix(),
-            projection: projection.to_projection_matrix(),
-        };
         for shader in &self.shaders {
-            shader.render(&self.state, renderables, &view_projection)
+            shader.render(&self.state, renderables, camera)
         }
     }
 }

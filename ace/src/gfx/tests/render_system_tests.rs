@@ -4,7 +4,7 @@ use pretty_assertions::assert_eq;
 use test_case::test_case;
 
 fn setup(spy_renderer: &SpyRenderer) -> RenderSystem {
-    let projection = Projection {
+    let projection = Perspective {
         width: 1280.0,
         height: 720.0,
         fov: math::Radians::from_degrees(45.0),

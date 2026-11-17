@@ -117,7 +117,8 @@ fn spawn_targets(
     let collider =
         ace::physics::Collider::new(metainfo.collider.expect("no collider found for Target.glb"));
     for target in targets {
-        let position = ace::Components::Transform(ace::x3d::Transform::new(target));
+        let transform = ace::x3d::Transform::new(target);
+        let position = ace::Components::Transform(transform);
         let collider = ace::Components::Collider(collider.clone());
         let components = vec![ace::Components::Model(model.clone()), position, collider];
         entities.create_entity(components);
@@ -168,7 +169,7 @@ fn spawn_floor(renderer: &mut gfx::opengl::OpenGlRenderer, entities: &mut ace::E
         .map(|v| {
             let mut new = v.clone();
             new.position *= 1024.0;
-            *new.position.mut_y() -= 10.0;
+            *new.position.mut_y() -= 3.0;
             new
         })
         .collect();
@@ -186,7 +187,7 @@ fn setup_world(
     window: &Arc<Mutex<glfw::PWindow>>,
 ) -> ace::World {
     let (width, height) = window.lock().unwrap().get_size();
-    let projection = gfx::Projection {
+    let projection = gfx::Perspective {
         width: width as f32,
         height: height as f32,
         fov: math::Radians::from_degrees(75.0),

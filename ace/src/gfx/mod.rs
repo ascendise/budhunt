@@ -9,58 +9,64 @@ mod tests;
 
 pub struct RenderSystem {
     renderer: Box<dyn Renderer>,
-    projection: Mutex<gfx::Projection>,
+    projection: Mutex<gfx::Perspective>,
 }
 impl System for RenderSystem {
     fn run(&self, entities: &mut Entities, events: &Events) {
-        let mut projection = self.projection.lock().unwrap();
         let inputs = events.get_events(|e| event!(e, Event::Input));
-        Self::handle_inputs(&inputs, &mut projection);
-        let camera = Self::find_camera(entities);
-        let models: Vec<Renderable> = entities
+        self.handle_inputs(&inputs);
+        let camera = self.find_camera(entities);
+        let models: Vec<Model> = entities
             .get_entities(Components::MODEL)
             .iter()
-            .map(|m| Renderable::Model(Self::get_model(m)))
+            .map(Self::get_model)
             .collect();
-        let mut lights: Vec<Renderable> = entities
+        let lights: Vec<Light> = entities
             .get_entities(Components::LIGHT)
             .iter()
-            .map(|l| Renderable::Light(Self::get_light(l)))
+            .map(Self::get_light)
             .collect();
-        let mut renderables = models;
-        renderables.append(&mut lights);
-        let mut lines: Vec<Renderable> = entities
+        let lines: Vec<Line> = entities
             .get_entities(Components::LINE)
             .iter()
-            .map(|l| Renderable::Line(Self::get_line(l)))
+            .map(Self::get_line)
             .collect();
-        renderables.append(&mut lines);
-        self.renderer.render(&projection, &camera, &renderables);
+        self.renderer.render(
+            &camera,
+            &Renderables {
+                models,
+                lights,
+                lines,
+            },
+        );
     }
 }
 impl RenderSystem {
     pub const MIN_FOV: f32 = math::radians(1.0);
     pub const MAX_FOV: f32 = math::radians(120.0);
 
-    pub fn new(renderer: Box<dyn Renderer>, projection: gfx::Projection) -> Self {
+    pub fn new(renderer: Box<dyn Renderer>, projection: gfx::Perspective) -> Self {
         Self {
             renderer,
             projection: Mutex::new(projection),
         }
     }
 
-    fn find_camera(entities: &mut Entities) -> Camera {
+    fn find_camera(&self, entities: &mut Entities) -> Camera {
         let entities = entities.get_entities(Components::PLAYER | Components::TRANSFORM);
         let entity = entities.first().expect("Player not found!");
         let transform = component!(&entity[Components::TRANSFORM], Components::Transform);
         let direction = transform.direction();
+        let projection = self.projection.lock().unwrap().clone();
         gfx::Camera {
             position: transform.position,
             direction,
+            projection: Projection::Perspective(projection),
         }
     }
 
-    fn handle_inputs(inputs: &[Input], projection: &mut gfx::Projection) {
+    fn handle_inputs(&self, inputs: &[Input]) {
+        let mut projection = self.projection.lock().unwrap();
         for input in inputs {
             if let Input::Scroll(scroll) = input {
                 let fov = *projection.fov + math::radians(-scroll);
@@ -99,42 +105,101 @@ impl RenderSystem {
     }
 }
 pub trait Renderer {
-    fn render(&self, projection: &Projection, camera: &Camera, render_targets: &[Renderable]);
+    fn render(&self, camera: &Camera, render_targets: &Renderables);
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Projection {
+pub enum Projection {
+    Perspective(Perspective),
+    Orthographic(Orthographic),
+}
+impl Projection {
+    pub fn to_projection_matrix(&self) -> math::Matrix4 {
+        self.into()
+    }
+}
+impl From<&Projection> for math::Matrix4 {
+    fn from(value: &Projection) -> Self {
+        match value {
+            Projection::Perspective(p) => p.to_projection_matrix(),
+            Projection::Orthographic(o) => o.to_projection_matrix(),
+        }
+    }
+}
+impl From<Projection> for math::Matrix4 {
+    fn from(value: Projection) -> Self {
+        (&value).into()
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Orthographic {
+    pub left: f32,
+    pub right: f32,
+    pub top: f32,
+    pub bottom: f32,
+    pub near: f32,
+    pub far: f32,
+}
+impl Orthographic {
+    fn to_projection_matrix(&self) -> math::Matrix4 {
+        math::orthographic(
+            self.left,
+            self.right,
+            self.top,
+            self.bottom,
+            self.near,
+            self.far,
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Perspective {
     pub width: f32,
     pub height: f32,
     pub fov: math::Radians,
     pub near: f32,
     pub far: f32,
 }
-impl Projection {
+impl Perspective {
     fn to_projection_matrix(&self) -> math::Matrix4 {
         let aspect_ratio = self.width / self.height;
-        math::projection(*self.fov, aspect_ratio, self.near, self.far)
+        math::perspective(*self.fov, aspect_ratio, self.near, self.far)
     }
 }
 
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Camera {
     pub position: math::Vec3,
     pub direction: math::Vec3,
+    pub projection: Projection,
 }
 impl Camera {
-    fn to_view_matrix(&self) -> math::Matrix4 {
+    pub fn view_projection(&self) -> math::Matrix4 {
+        self.projection.to_projection_matrix() * self.view()
+    }
+
+    pub fn view(&self) -> math::Matrix4 {
         let center = self.position + self.direction;
         let up = vec3!(0.0, 1.0, 0.0); // We do not allow the player to rotate on the z-axis so up is fixed
         math::look_at(&self.position, &center, &up)
     }
+
+    pub fn clone_at(&self, position: math::Vec3) -> Self {
+        Self {
+            position,
+            direction: self.direction,
+            projection: self.projection.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
-pub enum Renderable {
-    Model(Model),
-    Light(Light),
-    Line(Line),
+pub struct Renderables {
+    pub models: Vec<Model>,
+    pub lights: Vec<Light>,
+    pub lines: Vec<Line>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

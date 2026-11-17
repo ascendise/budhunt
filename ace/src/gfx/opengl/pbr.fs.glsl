@@ -25,10 +25,16 @@ uniform Material uMaterial;
 uniform int uPointLightsSize;
 uniform PointLight uPointLights[MAX_POINT_LIGHTS];
 
+uniform sampler2D uShadowMap;
+
 in vec3 vFragPos;
 in vec3 vNormal;
 in vec2 vTexPos;
+in vec4 vLightFragPos;
 out vec4 fColor;
+
+// tonemapping.glsl
+vec3 hdrToSdr(vec3 hdrColor);
 
 vec3 calculateAmbience(vec3 albedo, float metallic, float roughness, float ao);
 vec3 fresnelIbl(float cosTheta, vec3 F0, float roughness);
@@ -43,7 +49,13 @@ vec3 fresnel(float cosTheta, vec3 albedo, float metallic);
 float geometry(vec3 normal, vec3 viewDirection, vec3 lightDirection, float roughness);
 /// Schlick-GGX
 float geometryGgx(vec3 normal, vec3 direction, float roughness);
-vec3 hdrToSdr(vec3 hdrColor);
+
+float shadow();
+/// Counter shadow acne effect
+float shadowBias();
+float averageBlockerDepth(vec3 receiver, vec2 texelSize, float bias);
+float pcfSample(float size, vec3 receiver, float bias, vec2 texelSize);
+float sampleShadow(vec3 receiver, vec2 offset, float bias);
 
 const float PI = 3.14159265;
 
@@ -54,9 +66,10 @@ void main() {
   float ao = texture(uMaterial.metallicRoughnessAo, vTexPos).r;
   vec3 ambient = calculateAmbience(albedo, metallic, roughness, ao); //ambient too bright?
   vec3 radiance = calculateRadiance(albedo, metallic, roughness, ao);
+  float shadow = shadow();
   vec3 color = ambient + radiance;
   color = hdrToSdr(color);
-  fColor = vec4(color, 1.0);
+  fColor = vec4(color, 1.0) * (1.0 - shadow);
 }
 
 const vec2 invAtan = vec2(0.1591, 0.3183);
@@ -146,4 +159,67 @@ float geometry(vec3 normal, vec3 viewDirection, vec3 lightDirection, float rough
 float geometryGgx(vec3 normal, vec3 direction, float roughness) {
   float alignment = max(dot(normal, direction), 0.0);
   return alignment / (alignment * (1.0 - roughness) + roughness);
+}
+
+float shadow() {
+  vec3 receiver = vLightFragPos.xyz / vLightFragPos.w;
+  receiver = receiver * 0.5 + 0.5;
+  if (receiver.z > 1.0) {
+    return 0.0;
+  }
+  vec2 shadowMapSize = textureSize(uShadowMap, 0);
+  vec2 texelSize = 1.0 / shadowMapSize;
+  float bias = shadowBias();
+  float blockerDepth = averageBlockerDepth(receiver, texelSize, bias);
+  if (blockerDepth == 0.0) {
+    return 0.0;
+  }
+  const float LIGHT_SIZE = 10.0;
+  float penumbra = (receiver.z - blockerDepth) * LIGHT_SIZE / blockerDepth;
+  if (penumbra == 0.0) {
+    return 0.0;
+  }
+  return pcfSample(penumbra, receiver, bias, texelSize);
+}
+
+float averageBlockerDepth(vec3 receiver, vec2 texelSize, float bias) {
+  float avgDepth = 0.0;
+  int blockerCount = 0;
+  for (float x = -1.0; x <= 1.0; x++) {
+    for (float y = -1.0; y <= 1.0; y++) {
+      vec2 offset = vec2(x, y) * texelSize;
+      float depth = texture(uShadowMap, receiver.xy + offset).r;
+      if (receiver.z - bias > depth) {
+        avgDepth += depth;
+        blockerCount++;
+      }
+    }
+  }
+  return avgDepth / max(1, blockerCount);
+}
+
+float pcfSample(float penumbra, vec3 receiver, float bias, vec2 texelSize) {
+  const float SAMPLE_SIZE = 16.0;
+  float shadow = 0.0;
+  int sampleCount = 0;
+  float steps = 1.0 / SAMPLE_SIZE * penumbra;
+  penumbra /= 2;
+  for (float x = -penumbra; x <= penumbra; x += steps) {
+    for (float y = -penumbra; y <= penumbra; y += steps) {
+      vec2 offset = vec2(x, y) * texelSize;
+      shadow += sampleShadow(receiver, offset, bias);
+      sampleCount++;
+    }
+  }
+  return shadow / sampleCount;
+}
+
+float sampleShadow(vec3 receiver, vec2 offset, float bias) {
+  float depth = texture(uShadowMap, receiver.xy + offset).r;
+  return receiver.z - bias > depth ? 1.0 : 0.0;
+}
+
+float shadowBias() {
+  float bias = 0.05 * (1.0 - dot(vNormal, vLightFragPos.xyz));
+  return max(bias, 0.005);
 }

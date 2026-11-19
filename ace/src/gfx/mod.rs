@@ -1,7 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display, path::PathBuf, sync::Mutex};
 
-use crate::{gfx::opengl::Idx, x3d::Transform, *};
+use crate::{
+    gfx::{animation::Animation, opengl::Idx},
+    *,
+};
+#[allow(dead_code)] //TODO: remove
+mod animation;
 pub mod opengl;
 
 #[cfg(test)]
@@ -247,6 +252,9 @@ pub struct MeshMeta {
 const COLLIDER_NODE_NAME: &str = "COLLIDER";
 const POINT_NODE_PREFIX: &str = "POINT";
 
+//TODO: move into gltf module (with feature flag? do same for opengl?)
+//TODO: dont mention glb in naming, gltf/glb can be treated synonymous and gltf must be preferred
+
 /// Reads glb file from file system and returns a [Mesh] consisting of all the meshes inside the glb.
 /// If a [gltf::Mesh] has the [gltf::Mesh::name] "COLLIDER", it get's returned as [MeshMeta::collider]
 ///
@@ -257,39 +265,20 @@ const POINT_NODE_PREFIX: &str = "POINT";
 /// not just the OBJECT (orange symbol, parent of mesh).
 pub fn load_mesh_from_glb(gltf_path: &std::path::Path) -> Result<(Mesh, MeshMeta), LoadGlbError> {
     let (document, buffers, images) = import_gltf(gltf_path)?;
-    let mut collider = None;
-    let mut points = vec![];
-    let nodes: Vec<MeshNode> = document
-        .nodes()
-        .filter_map(|node| {
-            let mesh = node.mesh();
-            if let Some(mesh) = mesh {
-                if mesh.name() == Some(COLLIDER_NODE_NAME) {
-                    let collider_mesh =
-                        load_collider_mesh(&mesh, &buffers).expect("failed to load collider mesh");
-                    collider = Some(collider_mesh);
-                    None
-                } else {
-                    let mesh_node =
-                        load_mesh_node(&mesh, &buffers, &images).expect("failed to load mesh");
-                    Some(mesh_node)
-                }
-            } else {
-                if let Some(name) = node.name()
-                    && name.starts_with(POINT_NODE_PREFIX)
-                {
-                    let point =
-                        load_point(&node).unwrap_or_else(|| panic!("failed to load point {name}"));
-                    points.push(point);
-                }
-                None
-            }
-        })
-        .collect();
-    if nodes.is_empty() {
-        panic!("No model found!")
+    let (collider, points, nodes) = load_mesh_data(&document, &buffers, &images);
+    for animation in document.animations() {
+        // https://github.khronos.org/glTF-Tutorials/gltfTutorial/gltfTutorial_007_Animations.html
+        // https://blog.libove.org/posts/implementing-animations-with-gltf/
+        // iterate through channels to get keyframes
+        // iterate through samplers to get translation
+        //// read inputs (timestamps)
+        //// read outputs (translation value (probably vec3?))
+        // need to make sure that Keyframes end up ordered by the timestamp they are fired
     }
-    let mesh = Mesh { nodes };
+    let mesh = Mesh {
+        nodes,
+        animations: vec![],
+    };
     let metainfo = MeshMeta { collider, points };
     Ok((mesh, metainfo))
 }
@@ -313,11 +302,41 @@ fn import_gltf(
         },
     }
 }
-
-fn load_collider_mesh(
-    mesh: &gltf::Mesh<'_>,
+fn load_mesh_data(
+    document: &gltf::Document,
     buffers: &[gltf::buffer::Data],
-) -> Option<Vec<math::Vec3>> {
+    images: &[gltf::image::Data],
+) -> (Option<Vec<math::Vec3>>, Vec<math::Vec3>, Vec<MeshNode>) {
+    let mut collider = None;
+    let mut points = vec![];
+    let mut nodes = vec![];
+    for node in document.nodes() {
+        let mesh = node.mesh();
+        if let Some(mesh) = mesh {
+            if mesh.name() == Some(COLLIDER_NODE_NAME) {
+                let mesh = load_collider(&mesh, buffers).expect("failed to load collider mesh");
+                collider = Some(mesh);
+            } else {
+                let mesh_node = load_mesh(&mesh, buffers, images).expect("failed to load mesh");
+                nodes.push(mesh_node);
+            }
+        } else {
+            if let Some(name) = node.name()
+                && name.starts_with(POINT_NODE_PREFIX)
+            {
+                let point =
+                    load_point(&node).unwrap_or_else(|| panic!("failed to load point {name}"));
+                points.push(point);
+            }
+        }
+    }
+    if nodes.is_empty() {
+        panic!("No model found!")
+    }
+    (collider, points, nodes)
+}
+
+fn load_collider(mesh: &gltf::Mesh<'_>, buffers: &[gltf::buffer::Data]) -> Option<Vec<math::Vec3>> {
     let primitives: Vec<_> = mesh.primitives().collect();
     let primitive = primitives.first()?;
     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -343,7 +362,7 @@ fn load_point(node: &gltf::Node<'_>) -> Option<math::Vec3> {
     }
 }
 
-fn load_mesh_node(
+fn load_mesh(
     mesh: &gltf::Mesh,
     buffers: &[gltf::buffer::Data],
     images: &[gltf::image::Data],
@@ -423,7 +442,6 @@ fn read_texture(images: &[gltf::image::Data], texture: gltf::Texture<'_>) -> Ima
 pub enum LoadGlbError {
     FileNotFound(PathBuf),
     InvalidFormat,
-    /// File was exported into an invalid GLTF format
     Corrupted(String),
 }
 impl Error for LoadGlbError {}
@@ -449,6 +467,7 @@ pub struct Line {
 }
 
 pub struct Mesh {
+    pub animations: Vec<Animation>,
     pub nodes: Vec<MeshNode>,
 }
 

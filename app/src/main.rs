@@ -79,6 +79,7 @@ fn spawn_player(
 ) {
     let (rifle_mesh, metainfo) =
         gfx::load_mesh_from_glb(Path::new("./app/models/Rifle.glb")).expect("failed to load rifle");
+    println!("{:#?}", rifle_mesh.animations);
     let rifle_model = renderer.load_mesh(&rifle_mesh);
     let player_script = PlayerScript::new(clock);
     let point = *metainfo.points.first().expect("muzzle point data missing");

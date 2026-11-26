@@ -1,3 +1,4 @@
+use gltf::animation::util::ReadOutputs;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Display, path::PathBuf, sync::Mutex};
 
@@ -266,19 +267,24 @@ const POINT_NODE_PREFIX: &str = "POINT";
 pub fn load_mesh_from_glb(gltf_path: &std::path::Path) -> Result<(Mesh, MeshMeta), LoadGlbError> {
     let (document, buffers, images) = import_gltf(gltf_path)?;
     let (collider, points, nodes) = load_mesh_data(&document, &buffers, &images);
+    let mut animations = vec![];
     for animation in document.animations() {
-        // https://github.khronos.org/glTF-Tutorials/gltfTutorial/gltfTutorial_007_Animations.html
-        // https://blog.libove.org/posts/implementing-animations-with-gltf/
-        // iterate through channels to get keyframes
-        // iterate through samplers to get translation
-        //// read inputs (timestamps)
-        //// read outputs (translation value (probably vec3?))
-        // need to make sure that Keyframes end up ordered by the timestamp they are fired
+        let mut keyframes = vec![];
+        for (c, channel) in animation.channels().enumerate() {
+            let reader = channel.reader(|b| Some(&buffers[b.index()]));
+            let inputs: Vec<f32> = reader.read_inputs().unwrap().collect();
+            let outputs = reader.read_outputs().unwrap();
+            let transforms = read_transforms(outputs);
+            println!("transforms: {:#?}", transforms);
+            keyframes.push(animation::Keyframe {
+                timestamp: inputs[c],
+                transform: transforms[c],
+                node: channel.target().node().index(),
+            });
+        }
+        animations.push(Animation { keyframes });
     }
-    let mesh = Mesh {
-        nodes,
-        animations: vec![],
-    };
+    let mesh = Mesh { nodes, animations };
     let metainfo = MeshMeta { collider, points };
     Ok((mesh, metainfo))
 }
@@ -435,6 +441,24 @@ fn read_texture(images: &[gltf::image::Data], texture: gltf::Texture<'_>) -> Ima
         data: texture.pixels.clone(),
         width: texture.width,
         height: texture.height,
+    }
+}
+
+fn read_transforms(outputs: ReadOutputs<'_>) -> Vec<animation::Transform> {
+    match outputs {
+        ReadOutputs::Translations(translations) => translations
+            .map(|t| animation::Transform::Translation(t.into()))
+            .collect(),
+        ReadOutputs::Rotations(rotations) => rotations
+            .into_f32()
+            .map(|r| animation::Transform::Rotation(r.into()))
+            .collect(),
+        ReadOutputs::Scales(scales) => scales
+            .map(|s| animation::Transform::Scale(s.into()))
+            .collect(),
+        ReadOutputs::MorphTargetWeights(_) => {
+            panic!("the fuck?")
+        }
     }
 }
 

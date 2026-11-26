@@ -15,22 +15,7 @@ use ::gltf::animation::util::ReadOutputs;
 pub fn load_mesh_from_glb(gltf_path: &std::path::Path) -> Result<(Mesh, MeshMeta), LoadGlbError> {
     let (document, buffers, images) = import_gltf(gltf_path)?;
     let (collider, points, nodes) = load_mesh_data(&document, &buffers, &images);
-    let mut animations = vec![];
-    for animation in document.animations() {
-        let mut keyframes = vec![];
-        for (c, channel) in animation.channels().enumerate() {
-            let reader = channel.reader(|b| Some(&buffers[b.index()]));
-            let inputs: Vec<f32> = reader.read_inputs().unwrap().collect();
-            let outputs = reader.read_outputs().unwrap();
-            let transforms = read_transforms(outputs);
-            keyframes.push(animation::Keyframe {
-                timestamp: inputs[c],
-                transform: transforms[c],
-                node: channel.target().node().index(),
-            });
-        }
-        animations.push(Animation { keyframes });
-    }
+    let animations = load_animations(document, buffers);
     let mesh = Mesh { nodes, animations };
     let metainfo = MeshMeta { collider, points };
     Ok((mesh, metainfo))
@@ -194,20 +179,54 @@ fn read_texture(images: &[::gltf::image::Data], texture: ::gltf::Texture<'_>) ->
     }
 }
 
-fn read_transforms(outputs: ReadOutputs<'_>) -> Vec<animation::Transform> {
+fn load_animations(
+    document: ::gltf::Document,
+    buffers: Vec<::gltf::buffer::Data>,
+) -> Vec<super::Animation> {
+    let mut animations = vec![];
+    for animation in document.animations() {
+        let mut channels = vec![];
+        for channel in animation.channels() {
+            let reader = channel.reader(|b| Some(&buffers[b.index()]));
+            let inputs: Vec<f32> = reader.read_inputs().unwrap().collect();
+            let outputs = reader.read_outputs().unwrap();
+            let transforms = read_transforms(outputs);
+            channels.push(Channel {
+                timestamps: inputs,
+                transforms,
+                node: channel.target().node().index(),
+            });
+        }
+        animations.push(Animation(channels));
+    }
+    animations;
+    todo!()
+}
+
+fn read_transforms(outputs: ReadOutputs<'_>) -> Transform {
     match outputs {
-        ReadOutputs::Translations(translations) => translations
-            .map(|t| animation::Transform::Translation(t.into()))
-            .collect(),
-        ReadOutputs::Rotations(rotations) => rotations
-            .into_f32()
-            .map(|r| animation::Transform::Rotation(r.into()))
-            .collect(),
-        ReadOutputs::Scales(scales) => scales
-            .map(|s| animation::Transform::Scale(s.into()))
-            .collect(),
+        ReadOutputs::Translations(translations) => {
+            Transform::Translations(translations.map(math::Vec3::from).collect())
+        }
+        ReadOutputs::Rotations(rotations) => {
+            Transform::Rotations(rotations.into_f32().map(math::Vec4::from).collect())
+        }
+        ReadOutputs::Scales(scales) => Transform::Scales(scales.map(math::Vec3::from).collect()),
         ReadOutputs::MorphTargetWeights(_) => {
             panic!("the fuck?")
         }
     }
+}
+
+struct Animation(Vec<Channel>);
+struct Channel {
+    timestamps: Vec<f32>,
+    transforms: Transform,
+    node: usize,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum Transform {
+    Translations(Vec<math::Vec3>),
+    Rotations(Vec<math::Vec4>), //TODO: actually Quaternions
+    Scales(Vec<math::Vec3>),
 }

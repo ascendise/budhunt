@@ -12,16 +12,9 @@ pub struct Keyframe {
     pub node: usize,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Transform {
-    Translation(math::Vec3),
-    Rotation(math::Vec4), //TODO: actually Quaternions
-    Scale(math::Vec3),
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct Transform {
+    pub translation: math::Vec3,
+    pub rotation: math::Vec3,
+    pub scaling: math::Vec3,
 }
-
-//#[derive(Debug, Clone, PartialEq)]
-//pub struct Transform {
-//    translation: math::Vec3,
-//    rotation: math::Vec3,
-//    scaling: math::Vec3,
-//}
